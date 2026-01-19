@@ -326,10 +326,20 @@ function executeTool(
 
 export async function POST(request: Request) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return new Response(
+        JSON.stringify({ error: "Supabase environment variables are not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY." }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      )
+    }
+
     const cookieStore = await cookies()
     const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      supabaseUrl,
+      supabaseAnonKey,
       {
         cookies: {
           getAll: () => cookieStore.getAll(),
@@ -374,6 +384,13 @@ export async function POST(request: Request) {
 
     console.log("[v0] Processing request with app state:", !!appState)
     console.log("[v0] Messages count:", messages.length)
+
+    if (!process.env.OPENAI_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable." }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      )
+    }
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
