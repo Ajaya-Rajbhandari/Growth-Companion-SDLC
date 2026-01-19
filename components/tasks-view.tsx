@@ -24,6 +24,7 @@ export function TasksView() {
   )
   const [newTaskTitle, setNewTaskTitle] = useState("")
   const [newTaskPriority, setNewTaskPriority] = useState<Task["priority"]>("medium")
+  const [newTaskUrgency, setNewTaskUrgency] = useState<Task["urgency"]>("medium")
   const [newTaskDueDate, setNewTaskDueDate] = useState("")
   const [filter, setFilter] = useState<"all" | "pending" | "completed" | "overdue" | "upcoming">("all")
   const [inputError, setInputError] = useState("")
@@ -49,6 +50,7 @@ export function TasksView() {
       title: newTaskTitle.trim(),
       completed: false,
       priority: newTaskPriority,
+      urgency: newTaskUrgency,
       dueDate: newTaskDueDate || undefined,
     })
       .then(() => {
@@ -134,12 +136,22 @@ export function TasksView() {
             />
             <Select value={newTaskPriority} onValueChange={(v) => setNewTaskPriority(v as Task["priority"])}>
               <SelectTrigger className="w-full sm:w-32 bg-input border-border">
-                <SelectValue />
+                <SelectValue placeholder="Priority" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="low">Low Priority</SelectItem>
+                <SelectItem value="medium">Medium Priority</SelectItem>
+                <SelectItem value="high">High Priority</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={newTaskUrgency} onValueChange={(v) => setNewTaskUrgency(v as Task["urgency"])}>
+              <SelectTrigger className="w-full sm:w-32 bg-input border-border">
+                <SelectValue placeholder="Urgency" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Low Urgency</SelectItem>
+                <SelectItem value="medium">Medium Urgency</SelectItem>
+                <SelectItem value="high">High Urgency</SelectItem>
               </SelectContent>
             </Select>
             <Button onClick={handleAddTask} className="bg-primary text-primary-foreground">

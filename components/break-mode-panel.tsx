@@ -11,7 +11,7 @@ interface BreakModePanelProps {
   activeBreak: BreakPeriod | null
   breakTimeRemaining: { minutes: number; seconds: number } | null
   breakElapsed: { minutes: number; seconds: number }
-  onResume: () => void
+  onResume: () => void | Promise<void>
   isBreakEndedAlert: boolean
   breakType?: "short" | "lunch" | "custom"
 }

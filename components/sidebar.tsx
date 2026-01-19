@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
-import { LayoutDashboard, CheckSquare, FileText, Sparkles, Clock, User, LogOut, Sun, Moon } from "lucide-react"
+import { LayoutDashboard, CheckSquare, FileText, Sparkles, Clock, User, LogOut, Sun, Moon, Calendar as CalendarIcon, Target, Flame } from "lucide-react"
 import { useTheme } from "next-themes"
 
 export function Sidebar() {
@@ -47,6 +47,21 @@ export function Sidebar() {
       label: "Timesheet",
       icon: Clock,
       badge: currentEntry ? "Active" : undefined,
+    },
+    {
+      id: "calendar" as const,
+      label: "Calendar",
+      icon: CalendarIcon,
+    },
+    {
+      id: "goals" as const,
+      label: "Goals",
+      icon: Target,
+    },
+    {
+      id: "habits" as const,
+      label: "Habits",
+      icon: Flame,
     },
     {
       id: "profile" as const,

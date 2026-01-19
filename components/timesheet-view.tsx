@@ -6,6 +6,7 @@ import { useShallow } from "zustand/react/shallow"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -29,6 +30,8 @@ import {
   BellOff,
   Volume2,
   FileSpreadsheet,
+  Plus,
+  Trash2,
 } from "lucide-react"
 import React from "react" // Added for React.Fragment
 
@@ -73,6 +76,37 @@ function calculateDuration(
 
 function formatDuration(hours: number, minutes: number): string {
   return `${hours}h ${minutes}m`
+}
+
+function getBreakTypeLabel(type?: "short" | "lunch" | "custom", title?: string): string {
+  // If it's a custom break with a title, show the title instead
+  if (type === "custom" && title?.trim()) {
+    return title.trim()
+  }
+  
+  switch (type) {
+    case "short":
+      return "Short"
+    case "lunch":
+      return "Lunch"
+    case "custom":
+      return "Custom"
+    default:
+      return "Break"
+  }
+}
+
+function getBreakTypeBadgeColor(type?: "short" | "lunch" | "custom"): string {
+  switch (type) {
+    case "short":
+      return "bg-blue-500/20 text-blue-400 border-blue-500/30"
+    case "lunch":
+      return "bg-amber-500/20 text-amber-400 border-amber-500/30"
+    case "custom":
+      return "bg-purple-500/20 text-purple-400 border-purple-500/30"
+    default:
+      return "bg-muted text-foreground/70 border-border"
+  }
 }
 
 function calculateTotalHours(entries: TimeEntry[]): number {
@@ -273,6 +307,7 @@ export function TimesheetView() {
     endBreak,
     addBreakTime,
     updateEntryNotes,
+    updateBreakTitle,
     deleteTimeEntry,
     workTemplates,
     addWorkTemplate,
@@ -280,6 +315,10 @@ export function TimesheetView() {
     getTopTemplates,
     updateCurrentEntryTitle, // add new store method
     switchTask, // add new store method
+    timeCategories,
+    addTimeCategory,
+    updateTimeCategory,
+    deleteTimeCategory,
   } = useAppStore(
     useShallow((state) => ({
       timeEntries: state.timeEntries,
@@ -291,6 +330,7 @@ export function TimesheetView() {
       endBreak: state.endBreak,
       addBreakTime: state.addBreakTime,
       updateEntryNotes: state.updateEntryNotes,
+      updateBreakTitle: state.updateBreakTitle,
       deleteTimeEntry: state.deleteTimeEntry,
       workTemplates: state.workTemplates,
       addWorkTemplate: state.addWorkTemplate,
@@ -298,6 +338,10 @@ export function TimesheetView() {
       getTopTemplates: state.getTopTemplates,
       updateCurrentEntryTitle: state.updateCurrentEntryTitle,
       switchTask: state.switchTask,
+      timeCategories: state.timeCategories,
+      addTimeCategory: state.addTimeCategory,
+      updateTimeCategory: state.updateTimeCategory,
+      deleteTimeCategory: state.deleteTimeCategory,
     })),
   )
 
@@ -306,9 +350,14 @@ export function TimesheetView() {
   const [breakElapsed, setBreakElapsed] = useState({ minutes: 0, seconds: 0 })
   const [breakDialogOpen, setBreakDialogOpen] = useState(false)
   const [breakMinutes, setBreakMinutes] = useState("")
+  const [breakType, setBreakType] = useState<"short" | "lunch" | "custom">("custom")
+  const [breakTitle, setBreakTitle] = useState("")
   const [notesDialogOpen, setNotesDialogOpen] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<TimeEntry | null>(null)
   const [entryNotes, setEntryNotes] = useState("")
+  const [editBreakDialogOpen, setEditBreakDialogOpen] = useState(false)
+  const [selectedBreak, setSelectedBreak] = useState<{ entryId: string; breakId: string; currentTitle?: string } | null>(null)
+  const [breakTitleEdit, setBreakTitleEdit] = useState("")
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [breakEndedAlert, setBreakEndedAlert] = useState(false)
   const [editTaskDialogOpen, setEditTaskDialogOpen] = useState(false) // add state for edit dialog
@@ -320,7 +369,12 @@ export function TimesheetView() {
   const [selectedDate, setSelectedDate] = useState(new Date())
 
   const [workTitle, setWorkTitle] = useState("")
-  const [breakType, setBreakType] = useState<"short" | "lunch" | "custom">("short")
+  const [selectedCategory, setSelectedCategory] = useState<string>("")
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
+  const [showCategoryManagement, setShowCategoryManagement] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState("")
+  const [newCategoryColor, setNewCategoryColor] = useState("#3b82f6")
+  const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
   const [templateName, setTemplateName] = useState("")
 
@@ -449,6 +503,11 @@ export function TimesheetView() {
   const filteredEntries = useMemo(() => {
     let entries = filterEntriesByPeriod(timeEntries, selectedDate, viewPeriod)
 
+    // Filter by category if selected
+    if (categoryFilter) {
+      entries = entries.filter((entry) => entry.category === categoryFilter)
+    }
+
     // Add current entry if it's in the filtered date range and still active
     if (currentEntry && !currentEntry.clockOut) {
       const entryDate = new Date(currentEntry.date)
@@ -476,13 +535,14 @@ export function TimesheetView() {
       }
 
       const alreadyIncluded = entries.some((entry) => entry.id === currentEntry.id)
-      if (entryDate >= start && entryDate <= end && !alreadyIncluded) {
+      const matchesCategory = !categoryFilter || currentEntry.category === categoryFilter
+      if (entryDate >= start && entryDate <= end && !alreadyIncluded && matchesCategory) {
         entries = [currentEntry, ...entries]
       }
     }
 
     return entries
-  }, [timeEntries, selectedDate, viewPeriod, currentEntry])
+  }, [timeEntries, selectedDate, viewPeriod, currentEntry, categoryFilter])
 
   const groupedEntries = useMemo(() => {
     return groupEntriesByDate(filteredEntries)
@@ -514,8 +574,9 @@ export function TimesheetView() {
   // Handle clockIn with workTitle and save template
   const handleClockIn = () => {
     const title = workTitle.trim()
+    const category = selectedCategory || undefined
     if (title) {
-      clockIn(title)
+      clockIn(title, category)
         .then(() => {
           toast({
             title: "Clocked in",
@@ -529,9 +590,10 @@ export function TimesheetView() {
           })
         })
       setWorkTitle("")
+      setSelectedCategory("")
       return
     }
-    clockIn()
+    clockIn(undefined, category)
       .then(() => {
         toast({
           title: "Clocked in",
@@ -544,21 +606,63 @@ export function TimesheetView() {
           description: error instanceof Error ? error.message : "Unable to start session.",
         })
       })
+    setSelectedCategory("")
   }
 
   // Break type selection and management
-  const handleStartBreak = (type: "short" | "lunch" | "custom") => {
+  const handleStartBreak = async () => {
     const durations: Record<string, number> = {
       short: 15,
       lunch: 60,
-      custom: 30,
+      custom: breakMinutes.trim() ? Number.parseInt(breakMinutes, 10) : 30,
     }
-    startBreak(durations[type], type)
+    
+    const duration = durations[breakType]
+    if (breakType === "custom" && (!breakMinutes.trim() || isNaN(Number.parseInt(breakMinutes, 10)))) {
+      toast({
+        title: "Invalid duration",
+        description: "Please enter a valid break duration in minutes.",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    if (duration <= 0 || duration > 480) {
+      toast({
+        title: "Invalid duration",
+        description: "Break duration must be between 1 and 480 minutes.",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    startBreak(duration, breakType, breakTitle.trim() || undefined)
     toast({
       title: "Break started",
-      description: `${durations[type]} minute ${type} break.`,
+      description: breakTitle.trim() 
+        ? `${breakTitle} - ${duration} minute ${breakType} break.`
+        : `${duration} minute ${breakType} break.`,
     })
-    setBreakType(type)
+    setBreakDialogOpen(false)
+    setBreakMinutes("")
+    setBreakTitle("")
+    setBreakType("custom")
+  }
+
+  const handleEndBreak = async () => {
+    try {
+      await endBreak()
+      toast({
+        title: "Break ended",
+        description: "Welcome back! Ready to continue working.",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to end break",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleSaveTemplate = () => {
@@ -580,7 +684,7 @@ export function TimesheetView() {
 
   const topTemplates = getTopTemplates()
 
-  const handleAddManualBreak = () => {
+  const handleAddManualBreak = async () => {
     const minutes = breakMinutes.trim() ? Number.parseInt(breakMinutes, 10) : 0
 
     if (isNaN(minutes)) {
@@ -594,13 +698,21 @@ export function TimesheetView() {
       return
     }
 
-    addBreakTime(minutes)
-    toast({
-      title: "Break added",
-      description: `${minutes} minute break logged.`,
-    })
-    setBreakMinutes("")
-    setBreakDialogOpen(false)
+    try {
+      await addBreakTime(minutes)
+      toast({
+        title: "Break added",
+        description: `${minutes} minute break logged.`,
+      })
+      setBreakMinutes("")
+      setBreakDialogOpen(false)
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to add break time",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleSaveNotes = () => {
@@ -660,6 +772,33 @@ export function TimesheetView() {
     setSelectedEntry(entry)
     setEntryNotes(entry.notes || "")
     setNotesDialogOpen(true)
+  }
+
+  const openEditBreakDialog = (entryId: string, breakId: string, currentTitle?: string) => {
+    setSelectedBreak({ entryId, breakId, currentTitle })
+    setBreakTitleEdit(currentTitle || "")
+    setEditBreakDialogOpen(true)
+  }
+
+  const handleSaveBreakTitle = async () => {
+    if (!selectedBreak) return
+    
+    try {
+      await updateBreakTitle(selectedBreak.entryId, selectedBreak.breakId, breakTitleEdit)
+      toast({
+        title: "Break title updated",
+        description: "Break title has been saved.",
+      })
+      setEditBreakDialogOpen(false)
+      setSelectedBreak(null)
+      setBreakTitleEdit("")
+    } catch (error) {
+      toast({
+        title: "Update failed",
+        description: error instanceof Error ? error.message : "Unable to update break title.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handlePrevPeriod = () => {
@@ -854,7 +993,7 @@ export function TimesheetView() {
           breakRows.push([
             entry.date,
             entry.title || "No title",
-            brk.type.charAt(0).toUpperCase() + brk.type.slice(1),
+            getBreakTypeLabel(brk.type, brk.title),
             formatTime(brk.startTime),
             brk.endTime ? formatTime(brk.endTime) : "Ongoing",
             duration,
@@ -999,7 +1138,7 @@ export function TimesheetView() {
           activeBreak={activeBreak}
           breakTimeRemaining={breakTimeRemaining}
           breakElapsed={breakElapsed}
-          onResume={endBreak}
+          onResume={handleEndBreak}
           isBreakEndedAlert={breakEndedAlert}
           breakType={breakType}
         />
@@ -1068,6 +1207,39 @@ export function TimesheetView() {
                   onKeyPress={(e) => e.key === "Enter" && handleClockIn()}
                   className="text-base"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Category (optional)</label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowCategoryManagement(true)}
+                    className="h-6 text-xs"
+                  >
+                    Manage
+                  </Button>
+                </div>
+                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {timeCategories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-3 w-3 rounded-full"
+                            style={{ backgroundColor: cat.color }}
+                          />
+                          {cat.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {topTemplates.length > 0 && (
@@ -1154,6 +1326,88 @@ export function TimesheetView() {
                     </div>
                 </div>
 
+                {/* Show breaks taken if any */}
+                {currentEntry.breaks && currentEntry.breaks.length > 0 && (
+                  <div className="bg-muted/30 rounded-lg p-3 border border-muted">
+                    <p className="text-xs font-medium text-foreground/90 mb-2">Breaks taken:</p>
+                    <div className="space-y-1.5">
+                      {currentEntry.breaks.map((breakPeriod) => {
+                        const breakDuration = breakPeriod.endTime
+                          ? calculateDuration(breakPeriod.startTime, breakPeriod.endTime, 0)
+                          : null
+                        return (
+                          <div
+                            key={breakPeriod.id}
+                            className="flex items-center justify-between text-xs bg-background/50 rounded px-2 py-1.5"
+                          >
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
+                                onClick={() => openEditBreakDialog(entry.id, breakPeriod.id, breakPeriod.title)}
+                                title="Click to edit break title"
+                              >
+                                {getBreakTypeLabel(breakPeriod.type, breakPeriod.title)}
+                              </Badge>
+                              {breakPeriod.title && breakPeriod.type !== "custom" ? (
+                                <>
+                                  <span className="text-foreground/90 font-medium truncate">{breakPeriod.title}</span>
+                                  <span className="text-foreground/60 text-[10px]">
+                                    {formatTime(breakPeriod.startTime)} → {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-foreground/70 text-[10px]">
+                                  {formatTime(breakPeriod.startTime)} → {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                </span>
+                              )}
+                            </div>
+                            {breakDuration && (
+                              <span className="text-foreground/70 font-mono text-[10px] whitespace-nowrap ml-2">
+                                {breakDuration.hours}h {breakDuration.minutes}m
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Show previous tasks if any */}
+                {currentEntry.subtasks && currentEntry.subtasks.length > 0 && (
+                  <div className="bg-muted/30 rounded-lg p-3 border border-muted">
+                    <p className="text-xs font-medium text-foreground/90 mb-2">Previous tasks in this session:</p>
+                    <div className="space-y-1.5">
+                      {currentEntry.subtasks.map((subtask) => {
+                        const subtaskDuration = calculateDuration(
+                          subtask.clockIn,
+                          subtask.clockOut,
+                          0,
+                        )
+                        return (
+                          <div
+                            key={subtask.id}
+                            className="flex items-center justify-between text-xs bg-background/50 rounded px-2 py-1.5"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <span className="text-foreground/90 font-medium truncate block">
+                                {subtask.title}
+                              </span>
+                              <span className="text-foreground/60 text-[10px]">
+                                {formatTime(subtask.clockIn)} → {subtask.clockOut ? formatTime(subtask.clockOut) : "..."}
+                              </span>
+                            </div>
+                            <span className="text-foreground/70 font-mono text-[10px] whitespace-nowrap ml-2">
+                              {subtaskDuration.hours}h {subtaskDuration.minutes}m
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {!activeBreak && (
                   // add task management buttons
                   <div className="flex flex-wrap gap-3">
@@ -1165,9 +1419,9 @@ export function TimesheetView() {
                       <Play className="h-4 w-4" />
                       Switch Task
                     </Button>
-                    <Button onClick={() => startBreak()} variant="outline" className="gap-2">
+                    <Button onClick={() => setBreakDialogOpen(true)} variant="outline" className="gap-2">
                       <Coffee className="h-4 w-4" />
-                      Take 30m Break
+                      Take Break
                     </Button>
                     <Button onClick={handleClockOut} variant="destructive" className="gap-2 ml-auto">
                       <Square className="h-4 w-4" />
@@ -1325,9 +1579,10 @@ export function TimesheetView() {
                 </div>
               </div>
               {/* Rest of the card header content */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pt-2 border-t border-border">
-                <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg overflow-x-auto">
-                  {(["daily", "weekly", "monthly", "yearly"] as ViewPeriod[]).map((period) => (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pt-2 border-t border-border gap-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg overflow-x-auto">
+                    {(["daily", "weekly", "monthly", "yearly"] as ViewPeriod[]).map((period) => (
                     <Button
                       key={period}
                       variant={viewPeriod === period ? "secondary" : "ghost"}
@@ -1348,6 +1603,7 @@ export function TimesheetView() {
                   ))}
                 </div>
               </div>
+            </div>
             </div>
           </CardHeader>
 
@@ -1408,16 +1664,34 @@ export function TimesheetView() {
                                               <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                                             )}
                                           </div>
-                                          <div className="truncate">
-                                            {entry.title || (
-                                              <span className="text-foreground/70 italic">No task specified</span>
-                                            )}
+                                          <div className="flex items-center gap-2 truncate">
+                                            <span className="truncate">
+                                              {entry.title || (
+                                                <span className="text-foreground/70 italic">No task specified</span>
+                                              )}
+                                            </span>
+                                            {entry.category && (() => {
+                                              const category = timeCategories.find((c) => c.id === entry.category)
+                                              return category ? (
+                                                <Badge
+                                                  variant="outline"
+                                                  className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                                                  style={{
+                                                    borderColor: category.color,
+                                                    color: category.color,
+                                                    backgroundColor: `${category.color}15`,
+                                                  }}
+                                                >
+                                                  {category.name}
+                                                </Badge>
+                                              ) : null
+                                            })()}
                                           </div>
                                         </div>
                                         {entry.subtasks && entry.subtasks.length > 0 && (
-                                          <div className="mt-2 pt-2 border-t border-muted text-xs text-foreground/70 space-y-1">
-                                            <p className="font-medium text-foreground">Tasks completed:</p>
-                                            {entry.subtasks.map((subtask) => {
+                                          <div className="mt-2 pt-2 border-t border-muted text-xs text-foreground/70 space-y-1.5">
+                                            <p className="font-medium text-foreground mb-1">Previous tasks in this session:</p>
+                                            {entry.subtasks.map((subtask, idx) => {
                                               const subtaskDuration = calculateDuration(
                                                 subtask.clockIn,
                                                 subtask.clockOut,
@@ -1426,10 +1700,19 @@ export function TimesheetView() {
                                               return (
                                                 <div
                                                   key={subtask.id}
-                                                  className="flex items-center justify-between text-xs"
+                                                  className="flex items-start gap-2 pl-2 border-l-2 border-muted/50"
                                                 >
-                                                  <span className="truncate flex-1">• {subtask.title}</span>
-                                                  <span className="text-foreground/70 ml-2">
+                                                  <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1.5">
+                                                      <span className="text-foreground/90 font-medium truncate">
+                                                        {subtask.title}
+                                                      </span>
+                                                    </div>
+                                                    <div className="text-foreground/60 text-[10px] mt-0.5">
+                                                      {formatTime(subtask.clockIn)} → {subtask.clockOut ? formatTime(subtask.clockOut) : "..."}
+                                                    </div>
+                                                  </div>
+                                                  <span className="text-foreground/70 font-mono text-[10px] whitespace-nowrap">
                                                     {subtaskDuration.hours}h {subtaskDuration.minutes}m
                                                   </span>
                                                 </div>
@@ -1463,13 +1746,33 @@ export function TimesheetView() {
                                       </TableCell>
                                       <TableCell className="text-xs">
                                         {entry.breaks && entry.breaks.length > 0 ? (
-                                          <div className="text-xs space-y-1">
-                                            {entry.breaks.map((breakPeriod) => (
-                                              <div key={breakPeriod.id} className="text-foreground/70">
-                                                {formatTime(breakPeriod.startTime)} -{" "}
-                                                {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
-                                              </div>
-                                            ))}
+                                          <div className="text-xs space-y-1.5">
+                                            {entry.breaks.map((breakPeriod) => {
+                                              const breakDuration = breakPeriod.endTime
+                                                ? calculateDuration(breakPeriod.startTime, breakPeriod.endTime, 0)
+                                                : null
+                                              return (
+                                                <div key={breakPeriod.id} className="flex items-center gap-2">
+                                                  <Badge
+                                                    variant="outline"
+                                                    className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
+                                                    onClick={() => openEditBreakDialog(entry.id, breakPeriod.id, breakPeriod.title)}
+                                                    title="Click to edit break title"
+                                                  >
+                                                    {getBreakTypeLabel(breakPeriod.type, breakPeriod.title)}
+                                                  </Badge>
+                                                  <span className="text-foreground/70">
+                                                    {formatTime(breakPeriod.startTime)} -{" "}
+                                                    {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                    {breakDuration && (
+                                                      <span className="ml-1 text-foreground/60">
+                                                        ({breakDuration.hours}h {breakDuration.minutes}m)
+                                                      </span>
+                                                    )}
+                                                  </span>
+                                                </div>
+                                              )
+                                            })}
                                           </div>
                                         ) : (
                                           <span className="text-foreground/70">—</span>
@@ -1581,15 +1884,33 @@ export function TimesheetView() {
                                                               <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                                                             )}
                                                           </div>
-                                                          <div className="truncate">
-                                                            {entry.title || (
-                                                              <span className="text-foreground/70 italic">
-                                                                No task specified
-                                                              </span>
-                                                            )}
-                                                          </div>
-                                                        </div>
-                                                        {entry.subtasks && entry.subtasks.length > 0 && (
+                                                    <div className="flex items-center gap-2 truncate">
+                                                      <span className="truncate">
+                                                        {entry.title || (
+                                                          <span className="text-foreground/70 italic">
+                                                            No task specified
+                                                          </span>
+                                                        )}
+                                                      </span>
+                                                      {entry.category && (() => {
+                                                        const category = timeCategories.find((c) => c.id === entry.category)
+                                                        return category ? (
+                                                          <Badge
+                                                            variant="outline"
+                                                            className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                                                            style={{
+                                                              borderColor: category.color,
+                                                              color: category.color,
+                                                              backgroundColor: `${category.color}15`,
+                                                            }}
+                                                          >
+                                                            {category.name}
+                                                          </Badge>
+                                                        ) : null
+                                                      })()}
+                                                    </div>
+                                                  </div>
+                                                  {entry.subtasks && entry.subtasks.length > 0 && (
                                                           <div className="mt-2 pt-2 border-t border-muted text-xs text-foreground/70 space-y-1">
                                                             <p className="font-medium text-foreground">
                                                               Tasks completed:
@@ -1644,18 +1965,46 @@ export function TimesheetView() {
                                                       </TableCell>
                                                       <TableCell className="text-xs">
                                                         {entry.breaks && entry.breaks.length > 0 ? (
-                                                          <div className="text-xs space-y-1">
-                                                            {entry.breaks.map((breakPeriod) => (
-                                                              <div
-                                                                key={breakPeriod.id}
-                                                                className="text-foreground/70"
-                                                              >
-                                                                {formatTime(breakPeriod.startTime)} -{" "}
-                                                                {breakPeriod.endTime
-                                                                  ? formatTime(breakPeriod.endTime)
-                                                                  : "ongoing"}
-                                                              </div>
-                                                            ))}
+                                                          <div className="text-xs space-y-1.5">
+                                                            {entry.breaks.map((breakPeriod) => {
+                                                              const breakDuration = breakPeriod.endTime
+                                                                ? calculateDuration(breakPeriod.startTime, breakPeriod.endTime, 0)
+                                                                : null
+                                                              return (
+                                                                <div key={breakPeriod.id} className="flex items-center gap-2">
+                                                                  <Badge
+                                                                    variant="outline"
+                                                                    className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
+                                                                    onClick={() => openEditBreakDialog(entry.id, breakPeriod.id, breakPeriod.title)}
+                                                                    title="Click to edit break title"
+                                                                  >
+                                                                    {getBreakTypeLabel(breakPeriod.type, breakPeriod.title)}
+                                                                  </Badge>
+                                                                  <span className="text-foreground/70">
+                                                                    {breakPeriod.title && breakPeriod.type !== "custom" ? (
+                                                                      <>
+                                                                        <span className="font-medium">{breakPeriod.title}</span>
+                                                                        <span className="ml-2 text-foreground/60 text-[10px]">
+                                                                          {formatTime(breakPeriod.startTime)} -{" "}
+                                                                          {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                                          {breakDuration && ` (${breakDuration.hours}h ${breakDuration.minutes}m)`}
+                                                                        </span>
+                                                                      </>
+                                                                    ) : (
+                                                                      <>
+                                                                        {formatTime(breakPeriod.startTime)} -{" "}
+                                                                        {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                                        {breakDuration && (
+                                                                          <span className="ml-1 text-foreground/60">
+                                                                            ({breakDuration.hours}h {breakDuration.minutes}m)
+                                                                          </span>
+                                                                        )}
+                                                                      </>
+                                                                    )}
+                                                                  </span>
+                                                                </div>
+                                                              )
+                                                            })}
                                                           </div>
                                                         ) : (
                                                           <span className="text-foreground/70">—</span>
@@ -1714,12 +2063,30 @@ export function TimesheetView() {
                                                         <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                                                       )}
                                                     </div>
-                                                    <div className="truncate">
-                                                      {entry.title || (
-                                                        <span className="text-foreground/70 italic">
-                                                          No task specified
-                                                        </span>
-                                                      )}
+                                                    <div className="flex items-center gap-2 truncate">
+                                                      <span className="truncate">
+                                                        {entry.title || (
+                                                          <span className="text-foreground/70 italic">
+                                                            No task specified
+                                                          </span>
+                                                        )}
+                                                      </span>
+                                                      {entry.category && (() => {
+                                                        const category = timeCategories.find((c) => c.id === entry.category)
+                                                        return category ? (
+                                                          <Badge
+                                                            variant="outline"
+                                                            className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                                                            style={{
+                                                              borderColor: category.color,
+                                                              color: category.color,
+                                                              backgroundColor: `${category.color}15`,
+                                                            }}
+                                                          >
+                                                            {category.name}
+                                                          </Badge>
+                                                        ) : null
+                                                      })()}
                                                     </div>
                                                   </div>
                                                   {entry.subtasks && entry.subtasks.length > 0 && (
@@ -1774,14 +2141,45 @@ export function TimesheetView() {
                                                 <TableCell className="text-xs">
                                                   {entry.breaks && entry.breaks.length > 0 ? (
                                                     <div className="text-xs space-y-1">
-                                                      {entry.breaks.map((breakPeriod) => (
-                                                        <div key={breakPeriod.id} className="text-foreground/70">
-                                                          {formatTime(breakPeriod.startTime)} -{" "}
-                                                          {breakPeriod.endTime
-                                                            ? formatTime(breakPeriod.endTime)
-                                                            : "ongoing"}
-                                                        </div>
-                                                      ))}
+                                                      {entry.breaks.map((breakPeriod) => {
+                                                        const breakDuration = breakPeriod.endTime
+                                                          ? calculateDuration(breakPeriod.startTime, breakPeriod.endTime, 0)
+                                                          : null
+                                                        return (
+                                                          <div key={breakPeriod.id} className="flex items-center gap-2">
+                                                                  <Badge
+                                                                    variant="outline"
+                                                                    className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
+                                                                    onClick={() => openEditBreakDialog(entry.id, breakPeriod.id, breakPeriod.title)}
+                                                                    title="Click to edit break title"
+                                                                  >
+                                                                    {getBreakTypeLabel(breakPeriod.type, breakPeriod.title)}
+                                                                  </Badge>
+                                                            <span className="text-foreground/70">
+                                                              {breakPeriod.title ? (
+                                                                <>
+                                                                  <span className="font-medium">{breakPeriod.title}</span>
+                                                                  <span className="ml-2 text-foreground/60 text-[10px]">
+                                                                    {formatTime(breakPeriod.startTime)} -{" "}
+                                                                    {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                                    {breakDuration && ` (${breakDuration.hours}h ${breakDuration.minutes}m)`}
+                                                                  </span>
+                                                                </>
+                                                              ) : (
+                                                                <>
+                                                                  {formatTime(breakPeriod.startTime)} -{" "}
+                                                                  {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                                  {breakDuration && (
+                                                                    <span className="ml-1 text-foreground/60">
+                                                                      ({breakDuration.hours}h {breakDuration.minutes}m)
+                                                                    </span>
+                                                                  )}
+                                                                </>
+                                                              )}
+                                                            </span>
+                                                          </div>
+                                                        )
+                                                      })}
                                                     </div>
                                                   ) : (
                                                     <span className="text-foreground/70">—</span>
@@ -1934,6 +2332,130 @@ export function TimesheetView() {
           </DialogContent>
         </Dialog>
 
+        {/* Break Dialog */}
+        <Dialog open={breakDialogOpen} onOpenChange={setBreakDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Take a Break</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Break Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    type="button"
+                    variant={breakType === "short" ? "default" : "outline"}
+                    onClick={() => {
+                      setBreakType("short")
+                      setBreakMinutes("15")
+                    }}
+                    className="text-xs"
+                  >
+                    Short (15m)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={breakType === "lunch" ? "default" : "outline"}
+                    onClick={() => {
+                      setBreakType("lunch")
+                      setBreakMinutes("60")
+                    }}
+                    className="text-xs"
+                  >
+                    Lunch (60m)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={breakType === "custom" ? "default" : "outline"}
+                    onClick={() => setBreakType("custom")}
+                    className="text-xs"
+                  >
+                    Custom
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-2 block">Duration (minutes)</label>
+                <Input
+                  type="number"
+                  placeholder={breakType === "short" ? "15" : breakType === "lunch" ? "60" : "Enter duration"}
+                  value={breakMinutes}
+                  onChange={(e) => setBreakMinutes(e.target.value)}
+                  min="1"
+                  max="480"
+                  disabled={breakType !== "custom"}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-2 block">Break Title (optional)</label>
+                <Input
+                  placeholder="e.g., Coffee break, Lunch with team, Walk"
+                  value={breakTitle}
+                  onChange={(e) => setBreakTitle(e.target.value)}
+                  maxLength={100}
+                />
+                <div className="text-xs text-foreground/60 mt-1">{breakTitle.length}/100 characters</div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button onClick={handleStartBreak} className="flex-1">
+                  Start Break
+                </Button>
+                <Button variant="outline" onClick={() => {
+                  setBreakDialogOpen(false)
+                  setBreakMinutes("")
+                  setBreakTitle("")
+                  setBreakType("custom")
+                }} className="flex-1">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Break Title Dialog */}
+        <Dialog open={editBreakDialogOpen} onOpenChange={setEditBreakDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Break Title</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Break Title</label>
+                <Input
+                  placeholder="e.g., Coffee break, Lunch with team, Walk"
+                  value={breakTitleEdit}
+                  onChange={(e) => setBreakTitleEdit(e.target.value)}
+                  maxLength={100}
+                />
+                <div className="text-xs text-foreground/60 mt-1">{breakTitleEdit.length}/100 characters</div>
+                <p className="text-xs text-foreground/60 mt-2">
+                  Leave empty to use default "Custom" label
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={handleSaveBreakTitle} className="flex-1">
+                  Save
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEditBreakDialogOpen(false)
+                    setSelectedBreak(null)
+                    setBreakTitleEdit("")
+                  }}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={editTaskDialogOpen} onOpenChange={setEditTaskDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -2058,6 +2580,203 @@ export function TimesheetView() {
                   Cancel
                 </Button>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Category Management Dialog */}
+        <Dialog open={showCategoryManagement} onOpenChange={setShowCategoryManagement}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Manage Time Categories</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div className="space-y-2">
+                <Label htmlFor="category-name">Category Name</Label>
+                <Input
+                  id="category-name"
+                  placeholder="e.g., Development, Meetings, Admin"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="category-color">Color</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="category-color"
+                    type="color"
+                    value={newCategoryColor}
+                    onChange={(e) => setNewCategoryColor(e.target.value)}
+                    className="w-20 h-10"
+                  />
+                  <Input
+                    value={newCategoryColor}
+                    onChange={(e) => setNewCategoryColor(e.target.value)}
+                    placeholder="#3b82f6"
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+              <Button
+                onClick={async () => {
+                  if (!newCategoryName.trim()) {
+                    toast({
+                      title: "Error",
+                      description: "Category name is required",
+                      variant: "destructive",
+                    })
+                    return
+                  }
+                  try {
+                    await addTimeCategory({
+                      name: newCategoryName.trim(),
+                      color: newCategoryColor,
+                    })
+                    toast({
+                      title: "Category added",
+                      description: `"${newCategoryName.trim()}" category created.`,
+                    })
+                    setNewCategoryName("")
+                    setNewCategoryColor("#3b82f6")
+                  } catch (error) {
+                    toast({
+                      title: "Error",
+                      description: error instanceof Error ? error.message : "Failed to add category",
+                      variant: "destructive",
+                    })
+                  }
+                }}
+                className="w-full"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Category
+              </Button>
+
+              <div className="border-t pt-4">
+                <Label className="mb-3 block">Existing Categories</Label>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {timeCategories.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No categories yet. Create one above.
+                    </p>
+                  ) : (
+                    timeCategories.map((cat) => (
+                      <div
+                        key={cat.id}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="h-6 w-6 rounded-full border-2"
+                            style={{ backgroundColor: cat.color, borderColor: cat.color }}
+                          />
+                          <span className="font-medium">{cat.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingCategory(cat.id)
+                              setNewCategoryName(cat.name)
+                              setNewCategoryColor(cat.color)
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              if (confirm(`Delete category "${cat.name}"?`)) {
+                                try {
+                                  await deleteTimeCategory(cat.id)
+                                  toast({
+                                    title: "Category deleted",
+                                    description: `"${cat.name}" category removed.`,
+                                  })
+                                } catch (error) {
+                                  toast({
+                                    title: "Error",
+                                    description: error instanceof Error ? error.message : "Failed to delete category",
+                                    variant: "destructive",
+                                  })
+                                }
+                              }
+                            }}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {editingCategory && (
+                <div className="border-t pt-4 space-y-2">
+                  <Label>Edit Category</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="color"
+                      value={newCategoryColor}
+                      onChange={(e) => setNewCategoryColor(e.target.value)}
+                      className="w-20"
+                    />
+                    <Button
+                      onClick={async () => {
+                        if (!newCategoryName.trim()) {
+                          toast({
+                            title: "Error",
+                            description: "Category name is required",
+                            variant: "destructive",
+                          })
+                          return
+                        }
+                        try {
+                          await updateTimeCategory(editingCategory, {
+                            name: newCategoryName.trim(),
+                            color: newCategoryColor,
+                          })
+                          toast({
+                            title: "Category updated",
+                            description: `"${newCategoryName.trim()}" category updated.`,
+                          })
+                          setEditingCategory(null)
+                          setNewCategoryName("")
+                          setNewCategoryColor("#3b82f6")
+                        } catch (error) {
+                          toast({
+                            title: "Error",
+                            description: error instanceof Error ? error.message : "Failed to update category",
+                            variant: "destructive",
+                          })
+                        }
+                      }}
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setEditingCategory(null)
+                        setNewCategoryName("")
+                        setNewCategoryColor("#3b82f6")
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </DialogContent>
         </Dialog>

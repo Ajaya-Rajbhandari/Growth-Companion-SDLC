@@ -47,10 +47,13 @@ IMPORTANT NAVIGATION TIPS:
 IMPORTANT TIMESHEET RULES:
 - When user says "clock in", "start work", "begin my day", etc. - use clockIn tool
 - When user says "clock out", "end work", "finish my day", "going home", etc. - use clockOut tool  
+- When user says "switch task", "change task", "work on [task]", "switch to [task]" while already clocked in - use switchTask tool (DO NOT clock out!)
+- When user wants to update the current task title/description while clocked in - use switchTask tool
 - When user asks about their time, hours worked, or timesheet status - use getTimesheetStatus tool first
 - When user wants a break - use startBreak tool (ask for duration if not specified, or use 30 minute default)
 - When user wants to end break or resume work - use endBreak tool
-- Remind users they can add task descriptions when clocking in to track what work they're doing`
+- Remind users they can add task descriptions when clocking in to track what work they're doing
+- CRITICAL: "switch task" means changing what you're working on while staying clocked in. NEVER clock out when user wants to switch tasks!`
 
 const tools = [
   {
@@ -169,6 +172,23 @@ const tools = [
         type: "object",
         properties: {},
         required: [],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "switchTask",
+      description: "Switch to a different task while staying clocked in. Use this when the user wants to change what they're working on without clocking out. This updates the current work session's task description.",
+      parameters: {
+        type: "object",
+        properties: {
+          newTaskTitle: {
+            type: "string",
+            description: "The new task title or description to switch to",
+          },
+        },
+        required: ["newTaskTitle"],
       },
     },
   },
@@ -312,6 +332,20 @@ function executeTool(
 
         return {
           message: `Daily Summary:\nTasks: ${state.tasks?.length || 0} total (${pendingTasks} pending, ${highPriorityTasks} high priority)\nNotes: ${state.notes?.length || 0} total\nToday's work: ${todayHours.toFixed(2)}h across ${sessionCount} session(s)\n${state.currentEntry ? "Currently working" : "Not working"}`,
+        }
+      }
+
+      case "switchTask": {
+        const { newTaskTitle } = toolInput as { newTaskTitle: string }
+        if (!newTaskTitle?.trim()) {
+          return { message: "Error: Task title is required to switch tasks" }
+        }
+        if (!state.currentEntry) {
+          return { message: "Error: You must be clocked in to switch tasks. Please clock in first." }
+        }
+        return {
+          message: `Switched to working on "${newTaskTitle}". You're still clocked in.`,
+          action: { type: "switchTask", payload: { newTaskTitle: newTaskTitle.trim() } },
         }
       }
 

@@ -6,6 +6,9 @@ import { DashboardView } from "@/components/dashboard-view"
 import { TasksView } from "@/components/tasks-view"
 import { NotesView } from "@/components/notes-view"
 import { TimesheetView } from "@/components/timesheet-view"
+import { CalendarView } from "@/components/calendar-view"
+import { GoalsView } from "@/components/goals-view"
+import { HabitsView } from "@/components/habits-view"
 import { ProfileView } from "@/components/profile-view"
 import { FloatingAssistant } from "@/components/floating-assistant"
 import { OnboardingModal } from "@/components/onboarding-modal"
@@ -51,6 +54,9 @@ export default function Home() {
           {activeView === "tasks" && <TasksView />}
           {activeView === "notes" && <NotesView />}
           {activeView === "timesheet" && <TimesheetView />}
+          {activeView === "calendar" && <CalendarView />}
+          {activeView === "goals" && <GoalsView />}
+          {activeView === "habits" && <HabitsView />}
           {activeView === "profile" && <ProfileView />}
         </main>
       </div>

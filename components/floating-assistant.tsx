@@ -102,6 +102,7 @@ export function FloatingAssistant() {
     currentChatSessionId,
     chatSessions,
     timeEntries,
+    switchTask,
   } = useAppStore(
     useShallow((state) => ({
       addTask: state.addTask,
@@ -130,6 +131,7 @@ export function FloatingAssistant() {
       currentChatSessionId: state.currentChatSessionId,
       chatSessions: state.chatSessions,
       timeEntries: state.timeEntries,
+      switchTask: state.switchTask,
     })),
   )
   const [input, setInput] = useState("")
@@ -275,9 +277,19 @@ export function FloatingAssistant() {
             }
             const exists = tasks.some((t) => t.title === args.title)
             if (!exists) {
-              await addTask({ title: args.title, priority: args.priority, dueDate: args.dueDate, completed: false })
+              try {
+                await addTask({ title: args.title, priority: args.priority, dueDate: args.dueDate, completed: false })
+                results.push({ name: "createTask", result: { success: true, title: args.title } })
+              } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error)
+                results.push({ 
+                  name: "createTask", 
+                  result: { success: false, message: errorMessage } 
+                })
+              }
+            } else {
+              results.push({ name: "createTask", result: { success: true, title: args.title, message: "Task already exists" } })
             }
-            results.push({ name: "createTask", result: { success: true, title: args.title } })
           }
 
           if (toolCall.name === "createNote") {
@@ -290,14 +302,24 @@ export function FloatingAssistant() {
             } else {
               const exists = notes.some((n) => n.title === args.title)
               if (!exists) {
-                await addNote({ 
-                  title: args.title, 
-                  content: args.content,
-                  category: args.category || "other",
-                  tags: args.tags || []
-                })
+                try {
+                  await addNote({ 
+                    title: args.title, 
+                    content: args.content,
+                    category: args.category || "other",
+                    tags: args.tags || []
+                  })
+                  results.push({ name: "createNote", result: { success: true, title: args.title } })
+                } catch (error) {
+                  const errorMessage = error instanceof Error ? error.message : String(error)
+                  results.push({ 
+                    name: "createNote", 
+                    result: { success: false, message: errorMessage } 
+                  })
+                }
+              } else {
+                results.push({ name: "createNote", result: { success: true, title: args.title, message: "Note already exists" } })
               }
-              results.push({ name: "createNote", result: { success: true, title: args.title } })
             }
           }
 
@@ -353,8 +375,13 @@ export function FloatingAssistant() {
             if (!activeBreak) {
               results.push({ name: "endBreak", result: { success: false, message: "Not currently on a break" } })
             } else {
-              endBreak()
-              results.push({ name: "endBreak", result: { success: true, message: "Break ended, back to work!" } })
+              try {
+                await endBreak()
+                results.push({ name: "endBreak", result: { success: true, message: "Break ended, back to work!" } })
+              } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error)
+                results.push({ name: "endBreak", result: { success: false, message: errorMessage } })
+              }
             }
           }
 
@@ -378,7 +405,12 @@ export function FloatingAssistant() {
           }
         } catch (error) {
           console.error(`[v0] Tool error for ${toolCall.name}:`, error)
-          setError(`Error executing ${toolCall.name}: ${String(error)}`)
+          const errorMessage = error instanceof Error 
+            ? error.message 
+            : typeof error === 'string' 
+              ? error 
+              : error?.message || JSON.stringify(error)
+          setError(`Error executing ${toolCall.name}: ${errorMessage}`)
         }
       }
 
@@ -540,7 +572,13 @@ export function FloatingAssistant() {
                         }
                         const noteExists = notes.some((n) => n.title === payload.title)
                         if (!noteExists) {
-                          await addNote(payload)
+                          try {
+                            await addNote(payload)
+                          } catch (error) {
+                            console.error("[v0] Failed to create note:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to create note: ${errorMessage}`)
+                          }
                         }
                         break
                       case "clockIn":
@@ -560,7 +598,24 @@ export function FloatingAssistant() {
                         break
                       case "endBreak":
                         if (activeBreak) {
-                          endBreak()
+                          try {
+                            await endBreak()
+                          } catch (error) {
+                            console.error("[v0] Failed to end break:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to end break: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "switchTask":
+                        if (currentEntry && payload.newTaskTitle) {
+                          try {
+                            await switchTask(payload.newTaskTitle)
+                          } catch (error) {
+                            console.error("[v0] Failed to switch task:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to switch task: ${errorMessage}`)
+                          }
                         }
                         break
                     }
@@ -726,6 +781,19 @@ export function FloatingAssistant() {
           <CardContent className="p-2 flex items-center gap-2">
             <Play className="size-3.5 text-primary" />
             <span className="text-xs text-primary font-medium">Break ended</span>
+          </CardContent>
+        </Card>
+      )
+    }
+    if (toolCall.name === "switchTask") {
+      const args = (toolCall.arguments || {}) as { newTaskTitle?: string }
+      return (
+        <Card key={index} className="mt-2 bg-background/50 border-blue-500/30">
+          <CardContent className="p-2 flex items-center gap-2">
+            <Play className="size-3.5 text-blue-500" />
+            <span className="text-xs text-blue-500 font-medium">
+              Switched to: <strong>{args.newTaskTitle || "New task"}</strong>
+            </span>
           </CardContent>
         </Card>
       )

@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "@/components/auth-provider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
+import { ErrorHandler } from "@/components/error-handler"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -41,6 +42,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased">
+        <ErrorHandler />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <AuthProvider>
             {children}
