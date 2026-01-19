@@ -281,12 +281,24 @@ export function FloatingAssistant() {
           }
 
           if (toolCall.name === "createNote") {
-            const args = toolCall.arguments as { title: string; content: string }
-            const exists = notes.some((n) => n.title === args.title)
-            if (!exists) {
-              await addNote({ title: args.title, content: args.content })
+            const args = toolCall.arguments as { title?: string; content?: string; category?: string; tags?: string[] }
+            if (!args.title || !args.content) {
+              results.push({ 
+                name: "createNote", 
+                result: { success: false, message: "Missing required fields: title and content are required" } 
+              })
+            } else {
+              const exists = notes.some((n) => n.title === args.title)
+              if (!exists) {
+                await addNote({ 
+                  title: args.title, 
+                  content: args.content,
+                  category: args.category || "other",
+                  tags: args.tags || []
+                })
+              }
+              results.push({ name: "createNote", result: { success: true, title: args.title } })
             }
-            results.push({ name: "createNote", result: { success: true, title: args.title } })
           }
 
           if (toolCall.name === "clockIn") {
@@ -445,14 +457,28 @@ export function FloatingAssistant() {
         clearTimeout(timeoutId)
 
         if (!response.ok) {
-          const errorText = await response.text()
+          let errorText = ""
+          try {
+            errorText = await response.text()
+            // Try to parse as JSON for better error messages
+            try {
+              const errorJson = JSON.parse(errorText)
+              errorText = errorJson.error || errorText
+            } catch {
+              // Not JSON, use as-is
+            }
+          } catch {
+            errorText = `HTTP ${response.status}`
+          }
 
           if (response.status === 429) {
             throw new Error("Too many requests. Please wait a moment and try again.")
           } else if (response.status === 500) {
-            throw new Error("Server error. Please try again later.")
+            throw new Error(errorText || "Server error. Please try again later.")
+          } else if (response.status === 401) {
+            throw new Error("Authentication required. Please sign in again.")
           } else {
-            throw new Error(`API error: ${response.status} - ${errorText}`)
+            throw new Error(errorText || `API error: ${response.status}`)
           }
         }
 
@@ -508,6 +534,10 @@ export function FloatingAssistant() {
                         }
                         break
                       case "createNote":
+                        if (!payload.title || !payload.content) {
+                          console.error("[v0] Missing required note fields:", payload)
+                          break
+                        }
                         const noteExists = notes.some((n) => n.title === payload.title)
                         if (!noteExists) {
                           await addNote(payload)
@@ -552,10 +582,16 @@ export function FloatingAssistant() {
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           setError("Request timed out. Please try again.")
+          updateLastChatMessage({ content: "Error: Request timed out. Please try again." })
         } else {
-          setError(error instanceof Error ? error.message : "An error occurred. Please try again.")
+          const errorMessage = error instanceof Error 
+            ? error.message 
+            : typeof error === 'string' 
+              ? error 
+              : "An error occurred. Please try again."
+          setError(errorMessage)
+          updateLastChatMessage({ content: `Error: ${errorMessage}` })
         }
-        updateLastChatMessage({ content: `Error: ${error instanceof Error ? error.message : "Unknown error"}` })
       } finally {
         setIsLoading(false)
         abortControllerRef.current = null

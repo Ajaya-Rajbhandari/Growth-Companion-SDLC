@@ -545,7 +545,16 @@ export async function POST(request: Request) {
           controller.close()
         } catch (error) {
           console.error("[v0] Stream error:", error)
-          controller.error(error)
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          try {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ error: errorMessage })}\n\n`)
+            )
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"))
+          } catch (e) {
+            // If we can't send error through stream, just close
+          }
+          controller.close()
         }
       },
     })
@@ -559,6 +568,11 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("[v0] API error:", error)
-    return Response.json({ error: String(error) }, { status: 500 })
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : typeof error === 'string' 
+        ? error 
+        : JSON.stringify(error)
+    return Response.json({ error: errorMessage }, { status: 500 })
   }
 }
