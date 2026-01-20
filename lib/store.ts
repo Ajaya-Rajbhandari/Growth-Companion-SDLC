@@ -1655,21 +1655,60 @@ export const useAppStore = create<AppState>()(
         const { user } = get()
         if (!user) throw new Error("Must be logged in to log habit")
 
-        const { data, error } = await supabase
+        // Check if log already exists
+        const { data: existingLog, error: checkError } = await supabase
           .from("habit_logs")
-          .upsert({
-            habit_id: habitId,
-            user_id: user.id,
-            date,
-            count: count || 1,
-            notes: notes || null,
-          })
-          .select()
-          .single()
+          .select("*")
+          .eq("habit_id", habitId)
+          .eq("date", date)
+          .eq("user_id", user.id)
+          .maybeSingle()
+
+        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "not found" which is fine
+          throwSupabaseError(checkError, "Failed to check habit log")
+        }
+
+        let data: DbHabitLog | null = null
+        let error: any = null
+
+        if (existingLog) {
+          // Update existing log
+          const { data: updateData, error: updateError } = await supabase
+            .from("habit_logs")
+            .update({
+              count: count ?? existingLog.count,
+              notes: notes !== undefined ? notes : existingLog.notes,
+            })
+            .eq("habit_id", habitId)
+            .eq("date", date)
+            .eq("user_id", user.id)
+            .select()
+            .single()
+
+          data = updateData as DbHabitLog | null
+          error = updateError
+        } else {
+          // Insert new log
+          const { data: insertData, error: insertError } = await supabase
+            .from("habit_logs")
+            .insert({
+              habit_id: habitId,
+              user_id: user.id,
+              date,
+              count: count || 1,
+              notes: notes || null,
+            })
+            .select()
+            .single()
+
+          data = insertData as DbHabitLog | null
+          error = insertError
+        }
 
         if (error) throwSupabaseError(error, "Failed to log habit")
+        
         if (data) {
-          const newLog = mapHabitLogFromDb(data as DbHabitLog)
+          const newLog = mapHabitLogFromDb(data)
           set((state) => {
             const existingIndex = state.habitLogs.findIndex(
               (log) => log.habitId === habitId && log.date === date
