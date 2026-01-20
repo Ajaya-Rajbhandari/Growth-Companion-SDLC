@@ -1327,36 +1327,69 @@ export const useAppStore = create<AppState>()(
         const firstUserMessage = chatMessages.find((m) => m.role === "user")
         const title = firstUserMessage ? firstUserMessage.content.substring(0, 50) : "Untitled Chat"
 
-        const existingSession = chatSessions.find((s) => s.id === currentChatSessionId)
+        // Only use currentChatSessionId if it's a valid UUID format
+        // If it's not (e.g., old timestamp-based ID), generate a new UUID
+        const sessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentChatSessionId)
+          ? currentChatSessionId
+          : crypto.randomUUID()
 
         const sessionData = {
+          id: sessionId,
           title,
           messages: chatMessages,
           user_id: user.id,
           updated_at: new Date().toISOString()
         }
 
-        if (existingSession) {
-          const { error } = await supabase.from("chat_sessions").update(sessionData).eq("id", currentChatSessionId)
+        // Check if session exists in local state
+        const existingSession = chatSessions.find((s) => s.id === sessionId)
+        
+        // Also check database to handle cases where local state might be out of sync
+        const { data: dbSession } = await supabase
+          .from("chat_sessions")
+          .select("id")
+          .eq("id", sessionId)
+          .single()
+
+        const sessionExists = existingSession || dbSession
+
+        if (sessionExists) {
+          // Update existing session
+          const { error } = await supabase
+            .from("chat_sessions")
+            .update(sessionData)
+            .eq("id", sessionId)
+          
           if (error) {
             const errorMessage = error.message || JSON.stringify(error)
             throw new Error(`Failed to update chat session: ${errorMessage}`)
           }
         } else {
-          // Only insert if currentChatSessionId is a valid UUID format
-          // If it's not (e.g., old timestamp-based ID), generate a new UUID
-          const sessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentChatSessionId)
-            ? currentChatSessionId
-            : crypto.randomUUID()
-          
-          const { data, error } = await supabase.from("chat_sessions").insert({
-            ...sessionData,
-            id: sessionId
-          }).select().single()
+          // Insert new session
+          const { data, error } = await supabase
+            .from("chat_sessions")
+            .insert(sessionData)
+            .select()
+            .single()
 
+          // If we get a duplicate key error, the session was created between our check and insert
+          // Fall back to updating it instead
           if (error) {
-            const errorMessage = error.message || JSON.stringify(error)
-            throw new Error(`Failed to create chat session: ${errorMessage}`)
+            if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
+              // Session was created concurrently, update it instead
+              const { error: updateError } = await supabase
+                .from("chat_sessions")
+                .update(sessionData)
+                .eq("id", sessionId)
+              
+              if (updateError) {
+                const errorMessage = updateError.message || JSON.stringify(updateError)
+                throw new Error(`Failed to update chat session: ${errorMessage}`)
+              }
+            } else {
+              const errorMessage = error.message || JSON.stringify(error)
+              throw new Error(`Failed to create chat session: ${errorMessage}`)
+            }
           }
           
           // Update the current session ID if we generated a new one
