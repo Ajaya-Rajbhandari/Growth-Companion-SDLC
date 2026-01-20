@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { useRouter } from "next/navigation"
-import { Edit3, LogOut, User, Mail, Calendar } from "lucide-react"
+import { Edit3, LogOut, User, Mail, Calendar, HelpCircle } from "lucide-react"
 import { useState } from "react"
 import { SeedTestDataButton } from "./seed-test-data-button"
+import { OnboardingModal } from "./onboarding-modal"
 
 export function ProfileView() {
   const { user, logout, updateUserProfile, officeHours, setOfficeHours } = useAppStore(
@@ -29,6 +30,7 @@ export function ProfileView() {
   const [editOfficeHours, setEditOfficeHours] = useState(officeHours.toString())
   const [isEditingHours, setIsEditingHours] = useState(false)
   const [hoursError, setHoursError] = useState("")
+  const [showHelpTour, setShowHelpTour] = useState(false)
 
   const handleLogout = () => {
     logout()
@@ -221,6 +223,28 @@ export function ProfileView() {
         </CardContent>
       </Card>
 
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <HelpCircle className="size-5" />
+            Help & Support
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button
+            onClick={() => setShowHelpTour(true)}
+            variant="outline"
+            className="w-full border-border bg-transparent hover:bg-muted"
+          >
+            <HelpCircle className="size-4 mr-2" />
+            Take App Tour
+          </Button>
+          <p className="text-xs text-muted-foreground pt-2">
+            Learn about all features, AI capabilities, and how to use the app effectively.
+          </p>
+        </CardContent>
+      </Card>
+
       <SeedTestDataButton />
 
       <Card className="bg-card border-border">
@@ -241,6 +265,18 @@ export function ProfileView() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Help Tour Modal */}
+      {showHelpTour && (
+        <OnboardingModal
+          forceOpen={true}
+          onClose={() => {
+            setShowHelpTour(false)
+            // Reset to first step when closing
+            useAppStore.getState().setOnboardingStep(0)
+          }}
+        />
+      )}
     </div>
   )
 }

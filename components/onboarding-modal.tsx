@@ -4,16 +4,29 @@ import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { X, ChevronRight, CheckCircle2, LayoutDashboard, CheckSquare, FileText, Clock, Sparkles } from "lucide-react"
+import {
+  X,
+  ChevronRight,
+  CheckCircle2,
+  LayoutDashboard,
+  CheckSquare,
+  FileText,
+  Clock,
+  Sparkles,
+  Target,
+  Flame,
+  Calendar,
+  HelpCircle,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 
 const onboardingSteps = [
   {
     id: 0,
     title: "Welcome to Companion",
-    description: "Your personal productivity assistant for tasks, notes, and time tracking",
+    description: "Your personal productivity assistant for tasks, notes, time tracking, goals, and habits",
     icon: Sparkles,
-    tips: ["Track your work with precision", "Organize your ideas effortlessly", "Never lose sight of your goals"],
+    tips: ["Track your work with precision", "Organize your ideas effortlessly", "Never lose sight of your goals", "Build lasting habits"],
   },
   {
     id: 1,
@@ -25,6 +38,7 @@ const onboardingSteps = [
       "See your weekly activity and productivity rate",
       "View pending tasks and recent notes",
       "Track your work consistency",
+      "Monitor goals and habits progress",
     ],
   },
   {
@@ -33,7 +47,7 @@ const onboardingSteps = [
     description:
       "Create, prioritize, and track tasks with different priority levels. Mark them complete as you progress.",
     icon: CheckSquare,
-    tips: ["Set priority levels (low, medium, high)", "Track task completion rates", "Filter by status and priority"],
+    tips: ["Set priority levels (low, medium, high)", "Track task completion rates", "Filter by status and priority", "Set due dates and urgency levels"],
   },
   {
     id: 3,
@@ -41,7 +55,7 @@ const onboardingSteps = [
     description:
       "Capture ideas and important information with categories and tags. Search and organize your thoughts easily.",
     icon: FileText,
-    tips: ["Organize notes by category", "Tag notes for quick filtering", "Format with bold, italic, and code"],
+    tips: ["Organize notes by category", "Tag notes for quick filtering", "Format with bold, italic, and code", "Search across all your notes"],
   },
   {
     id: 4,
@@ -54,19 +68,74 @@ const onboardingSteps = [
       "Take 30-minute breaks automatically",
       "Switch tasks mid-session",
       "Export timesheet reports",
+      "View time history by day, week, month, or year",
     ],
   },
   {
     id: 5,
-    title: "AI Assistant",
+    title: "Set & Track Goals",
     description:
-      "Get help with task creation, productivity tips, and timesheet management through natural conversation.",
+      "Create meaningful goals, track progress, and achieve milestones. Organize by categories and set target dates.",
+    icon: Target,
+    tips: [
+      "Create goals with descriptions and target dates",
+      "Track progress from 0% to 100%",
+      "Add and complete milestones",
+      "Manage goal status (active, completed, paused)",
+      "Organize goals by categories",
+    ],
+  },
+  {
+    id: 6,
+    title: "Build Habits",
+    description:
+      "Create daily habits, log your progress, and track streaks. Build consistency with visual feedback.",
+    icon: Flame,
+    tips: [
+      "Create habits with custom frequencies",
+      "Log habit completion daily",
+      "Track your current streak",
+      "Set target counts per day/week",
+      "View habit statistics and history",
+    ],
+  },
+  {
+    id: 7,
+    title: "Calendar View",
+    description:
+      "See all your tasks, time entries, goals, and habits in one unified calendar view. Plan your days effectively.",
+    icon: Calendar,
+    tips: [
+      "View events in month, week, or day views",
+      "Filter by type (tasks, time, goals, habits)",
+      "Navigate to specific dates",
+      "See upcoming deadlines and events",
+    ],
+  },
+  {
+    id: 8,
+    title: "AI Assistant - Your Smart Helper",
+    description:
+      "Your AI assistant can help with everything! Ask it to create tasks, manage goals, track time, and much more.",
     icon: Sparkles,
-    tips: ["Ask to create tasks and notes", "Get productivity recommendations", "Manage timesheet operations via chat"],
+    tips: [
+      "Ask: 'Create a task to learn TypeScript'",
+      "Say: 'Show me progress on my active goals'",
+      "Try: 'Clock me in for React development'",
+      "Request: 'What's on my calendar today?'",
+      "Command: 'Delete all goals that haven't been started'",
+      "Ask: 'Help me plan my day'",
+      "💡 Tip: The AI learns from your feedback to improve!",
+    ],
   },
 ]
 
-export function OnboardingModal() {
+interface OnboardingModalProps {
+  forceOpen?: boolean
+  onClose?: () => void
+}
+
+export function OnboardingModal({ forceOpen, onClose }: OnboardingModalProps = {}) {
   const { hasCompletedOnboarding, currentOnboardingStep, setOnboardingStep, completeOnboarding, skipOnboarding } =
     useAppStore(
       useShallow((state) => ({
@@ -81,13 +150,13 @@ export function OnboardingModal() {
   const [errorMessage, setErrorMessage] = useState("")
 
   useEffect(() => {
-    // Show onboarding only on first login
-    if (!hasCompletedOnboarding) {
+    // Show onboarding on first login or if forced open
+    if (forceOpen || !hasCompletedOnboarding) {
       setIsVisible(true)
     }
-  }, [hasCompletedOnboarding])
+  }, [hasCompletedOnboarding, forceOpen])
 
-  if (!isVisible || hasCompletedOnboarding) {
+  if (!isVisible) {
     return null
   }
 
@@ -98,13 +167,19 @@ export function OnboardingModal() {
   const handleNext = () => {
     if (isLastStep) {
       setErrorMessage("")
-      void completeOnboarding()
-        .then(() => {
-          setIsVisible(false)
-        })
-        .catch(() => {
-          setErrorMessage("Failed to save onboarding status. Please try again.")
-        })
+      if (!forceOpen) {
+        void completeOnboarding()
+          .then(() => {
+            setIsVisible(false)
+            onClose?.()
+          })
+          .catch(() => {
+            setErrorMessage("Failed to save onboarding status. Please try again.")
+          })
+      } else {
+        setIsVisible(false)
+        onClose?.()
+      }
     } else {
       setOnboardingStep(currentOnboardingStep + 1)
     }
@@ -112,13 +187,19 @@ export function OnboardingModal() {
 
   const handleSkip = () => {
     setErrorMessage("")
-    void skipOnboarding()
-      .then(() => {
-        setIsVisible(false)
-      })
-      .catch(() => {
-        setErrorMessage("Failed to save onboarding status. Please try again.")
-      })
+    if (!forceOpen) {
+      void skipOnboarding()
+        .then(() => {
+          setIsVisible(false)
+          onClose?.()
+        })
+        .catch(() => {
+          setErrorMessage("Failed to save onboarding status. Please try again.")
+        })
+    } else {
+      setIsVisible(false)
+      onClose?.()
+    }
   }
 
   return (
@@ -209,9 +290,11 @@ export function OnboardingModal() {
           {errorMessage && <p className="text-xs text-destructive text-center">{errorMessage}</p>}
 
           {/* Footer */}
-          <p className="text-xs text-center text-muted-foreground">
-            You can access this tour anytime from your settings
-          </p>
+          {!forceOpen && (
+            <p className="text-xs text-center text-muted-foreground">
+              You can access this tour anytime from your profile settings
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

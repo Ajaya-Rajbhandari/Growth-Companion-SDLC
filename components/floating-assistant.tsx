@@ -29,41 +29,118 @@ import {
   Plus,
   Trash2,
   ArrowLeft,
+  Flame,
+  Copy,
+  RotateCw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { AIMessage } from "@/components/ai-message"
+import { AIFeedback } from "@/components/ai-feedback"
+import { toast } from "@/components/ui/use-toast"
 
-const suggestedPrompts = [
-  {
-    icon: Target,
-    label: "Plan my day",
-    prompt: "Help me plan my day effectively based on my current tasks and schedule.",
-  },
-  {
-    icon: Clock,
-    label: "Clock in",
-    prompt: "Clock me in to start tracking my work time.",
-  },
-  {
-    icon: BarChart3,
-    label: "Time status",
-    prompt: "What's my timesheet status? How many hours have I worked today?",
-  },
-  {
-    icon: Brain,
-    label: "Daily summary",
-    prompt: "Give me a summary of my tasks, notes, and time tracked for today.",
-  },
-  {
-    icon: MessageCircle,
-    label: "How to use",
-    prompt: "Show me how to use the different features in this app. Where can I find things?",
-  },
-  {
-    icon: AlertCircle,
-    label: "Need help?",
-    prompt: "I need help navigating the app. What can I do here?",
-  },
-]
+// Generate context-aware suggested prompts
+const getSuggestedPrompts = (
+  tasks: any[],
+  goals: any[],
+  habits: any[],
+  currentEntry: any,
+  timeEntries: any[]
+) => {
+  const hour = new Date().getHours()
+  const isMorning = hour >= 6 && hour < 12
+  const isAfternoon = hour >= 12 && hour < 18
+  const isEvening = hour >= 18 || hour < 6
+  
+  const pendingTasks = tasks.filter((t) => !t.completed).length
+  const highPriorityTasks = tasks.filter((t) => !t.completed && t.priority === "high").length
+  const activeGoals = goals.filter((g) => g.status === "active").length
+  const today = new Date().toISOString().split("T")[0]
+  const todayHabitLogs = habits.length > 0 ? habits.length : 0
+  
+  const basePrompts = [
+    {
+      icon: Target,
+      label: "Plan my day",
+      prompt: "Help me plan my day effectively based on my current tasks and schedule.",
+      priority: isMorning ? 1 : 3,
+    },
+    {
+      icon: Clock,
+      label: currentEntry ? "Clock out" : "Clock in",
+      prompt: currentEntry ? "Clock me out to end my work session." : "Clock me in to start tracking my work time.",
+      priority: !currentEntry && isMorning ? 1 : 4,
+    },
+    {
+      icon: BarChart3,
+      label: "Time status",
+      prompt: "What's my timesheet status? How many hours have I worked today?",
+      priority: isAfternoon || isEvening ? 2 : 4,
+    },
+    {
+      icon: Brain,
+      label: "Daily summary",
+      prompt: "Give me a summary of my tasks, notes, and time tracked for today.",
+      priority: isEvening ? 1 : 3,
+    },
+  ]
+
+  // Context-aware prompts
+  const contextPrompts = []
+  
+  if (pendingTasks > 0) {
+    contextPrompts.push({
+      icon: Target,
+      label: highPriorityTasks > 0 ? `Prioritize ${highPriorityTasks} urgent tasks` : `Review ${pendingTasks} pending tasks`,
+      prompt: highPriorityTasks > 0
+        ? `Help me prioritize my ${highPriorityTasks} high-priority tasks.`
+        : `Help me organize my ${pendingTasks} pending tasks.`,
+      priority: 1,
+    })
+  }
+  
+  if (activeGoals > 0) {
+    contextPrompts.push({
+      icon: Target,
+      label: "Check goals progress",
+      prompt: "Show me the progress on my active goals and what I need to do next.",
+      priority: 2,
+    })
+  }
+  
+  if (habits.length > 0) {
+    contextPrompts.push({
+      icon: Flame,
+      label: "Log habits",
+      prompt: "Help me log my habits for today.",
+      priority: isMorning ? 2 : 3,
+    })
+  }
+  
+  if (!currentEntry && isMorning) {
+    contextPrompts.push({
+      icon: Play,
+      label: "Start work session",
+      prompt: "Clock me in and help me plan what to work on today.",
+      priority: 1,
+    })
+  }
+  
+  if (currentEntry && isAfternoon) {
+    contextPrompts.push({
+      icon: Coffee,
+      label: "Take a break",
+      prompt: "I need a break. Start a 30-minute break for me.",
+      priority: 2,
+    })
+  }
+
+  // Combine and sort by priority
+  const allPrompts = [...basePrompts, ...contextPrompts]
+  allPrompts.sort((a, b) => a.priority - b.priority)
+  
+  // Return top 6 prompts
+  return allPrompts.slice(0, 6).map(({ icon, label, prompt }) => ({ icon, label, prompt }))
+}
 
 const REQUEST_TIMEOUT_MS = 30000
 
@@ -78,8 +155,27 @@ export function FloatingAssistant() {
   const {
     addTask,
     addNote,
+    updateTask,
+    deleteTask,
+    toggleTask,
+    updateNote,
+    deleteNote,
+    addGoal,
+    updateGoal,
+    deleteGoal,
+    updateGoalProgress,
+    addHabit,
+    updateHabit,
+    deleteHabit,
+    logHabit,
+    getHabitStreak,
+    getHabitStats,
     tasks,
     notes,
+    goals,
+    habits,
+    habitLogs,
+    timeEntries,
     chatMessages,
     isChatOpen,
     toggleChat,
@@ -90,6 +186,7 @@ export function FloatingAssistant() {
     clockOut,
     startBreak,
     endBreak,
+    switchTask,
     currentEntry,
     activeBreak,
     getTimesheetStatus,
@@ -101,14 +198,30 @@ export function FloatingAssistant() {
     deleteChatSession,
     currentChatSessionId,
     chatSessions,
-    timeEntries,
-    switchTask,
   } = useAppStore(
     useShallow((state) => ({
       addTask: state.addTask,
       addNote: state.addNote,
+      updateTask: state.updateTask,
+      deleteTask: state.deleteTask,
+      toggleTask: state.toggleTask,
+      updateNote: state.updateNote,
+      deleteNote: state.deleteNote,
+      addGoal: state.addGoal,
+      updateGoal: state.updateGoal,
+      deleteGoal: state.deleteGoal,
+      updateGoalProgress: state.updateGoalProgress,
+      addHabit: state.addHabit,
+      updateHabit: state.updateHabit,
+      deleteHabit: state.deleteHabit,
+      logHabit: state.logHabit,
+      getHabitStreak: state.getHabitStreak,
+      getHabitStats: state.getHabitStats,
       tasks: state.tasks,
       notes: state.notes,
+      goals: state.goals,
+      habits: state.habits,
+      habitLogs: state.habitLogs,
       chatMessages: state.chatMessages,
       isChatOpen: state.isChatOpen,
       toggleChat: state.toggleChat,
@@ -119,6 +232,7 @@ export function FloatingAssistant() {
       clockOut: state.clockOut,
       startBreak: state.startBreak,
       endBreak: state.endBreak,
+      switchTask: state.switchTask,
       currentEntry: state.currentEntry,
       activeBreak: state.activeBreak,
       getTimesheetStatus: state.getTimesheetStatus,
@@ -131,7 +245,6 @@ export function FloatingAssistant() {
       currentChatSessionId: state.currentChatSessionId,
       chatSessions: state.chatSessions,
       timeEntries: state.timeEntries,
-      switchTask: state.switchTask,
     })),
   )
   const [input, setInput] = useState("")
@@ -503,6 +616,9 @@ export function FloatingAssistant() {
             appState: {
               tasks,
               notes,
+              goals,
+              habits,
+              habitLogs,
               currentEntry,
               timeEntries,
             },
@@ -527,14 +643,19 @@ export function FloatingAssistant() {
             errorText = `HTTP ${response.status}`
           }
 
+          // Provide user-friendly error messages with actionable suggestions
           if (response.status === 429) {
             throw new Error("Too many requests. Please wait a moment and try again.")
           } else if (response.status === 500) {
-            throw new Error(errorText || "Server error. Please try again later.")
+            throw new Error("Server error. Please try again later. If the problem persists, check your connection.")
           } else if (response.status === 401) {
             throw new Error("Authentication required. Please sign in again.")
+          } else if (response.status === 503) {
+            throw new Error("Service temporarily unavailable. Please try again in a few moments.")
+          } else if (response.status === 400) {
+            throw new Error(errorText || "Invalid request. Please check your input and try again.")
           } else {
-            throw new Error(errorText || `API error: ${response.status}`)
+            throw new Error(errorText || `API error: ${response.status}. Please try again.`)
           }
         }
 
@@ -578,6 +699,9 @@ export function FloatingAssistant() {
                     arguments: {},
                     result: data.toolResult,
                   })
+                  
+                  // Don't append tool results to assistantContent - the AI can see them in toolCalls context
+                  // and will generate its own response without duplicating the tool result
 
                   if (data.toolAction) {
                     const { type, payload } = data.toolAction
@@ -639,6 +763,183 @@ export function FloatingAssistant() {
                             console.error("[v0] Failed to switch task:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to switch task: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "updateTask":
+                        if (payload.id) {
+                          try {
+                            await updateTask(payload.id, {
+                              title: payload.title,
+                              priority: payload.priority,
+                              urgency: payload.urgency,
+                              dueDate: payload.dueDate,
+                              completed: payload.completed,
+                            })
+                          } catch (error) {
+                            console.error("[v0] Failed to update task:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to update task: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "deleteTask":
+                        if (payload.id) {
+                          try {
+                            await deleteTask(payload.id)
+                          } catch (error) {
+                            console.error("[v0] Failed to delete task:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to delete task: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "completeTask":
+                        if (payload.id) {
+                          try {
+                            await toggleTask(payload.id, true)
+                          } catch (error) {
+                            console.error("[v0] Failed to complete task:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to complete task: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "updateNote":
+                        if (payload.id) {
+                          try {
+                            await updateNote(payload.id, {
+                              title: payload.title,
+                              content: payload.content,
+                              category: payload.category,
+                              tags: payload.tags,
+                            })
+                          } catch (error) {
+                            console.error("[v0] Failed to update note:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to update note: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "deleteNote":
+                        if (payload.id) {
+                          try {
+                            await deleteNote(payload.id)
+                          } catch (error) {
+                            console.error("[v0] Failed to delete note:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to delete note: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "createGoal":
+                        try {
+                          await addGoal({
+                            title: payload.title,
+                            description: payload.description,
+                            targetDate: payload.targetDate,
+                            category: payload.category,
+                            status: payload.status || "active",
+                            progress: payload.progress || 0,
+                            milestones: [],
+                          })
+                        } catch (error) {
+                          console.error("[v0] Failed to create goal:", error)
+                          const errorMessage = error instanceof Error ? error.message : String(error)
+                          setError(`Failed to create goal: ${errorMessage}`)
+                        }
+                        break
+                      case "updateGoal":
+                        if (payload.id) {
+                          try {
+                            await updateGoal(payload.id, {
+                              title: payload.title,
+                              description: payload.description,
+                              targetDate: payload.targetDate,
+                              progress: payload.progress,
+                              status: payload.status,
+                              category: payload.category,
+                            })
+                          } catch (error) {
+                            console.error("[v0] Failed to update goal:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to update goal: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "deleteGoal":
+                        if (payload.id) {
+                          try {
+                            await deleteGoal(payload.id)
+                          } catch (error) {
+                            console.error("[v0] Failed to delete goal:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to delete goal: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "updateGoalProgress":
+                        if (payload.id && payload.progress !== undefined) {
+                          try {
+                            await updateGoalProgress(payload.id, payload.progress)
+                          } catch (error) {
+                            console.error("[v0] Failed to update goal progress:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to update goal progress: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "createHabit":
+                        try {
+                          await addHabit({
+                            title: payload.title,
+                            description: payload.description,
+                            frequency: payload.frequency || "daily",
+                            targetCount: payload.targetCount || 1,
+                            color: payload.color || "#3b82f6",
+                          })
+                        } catch (error) {
+                          console.error("[v0] Failed to create habit:", error)
+                          const errorMessage = error instanceof Error ? error.message : String(error)
+                          setError(`Failed to create habit: ${errorMessage}`)
+                        }
+                        break
+                      case "updateHabit":
+                        if (payload.id) {
+                          try {
+                            await updateHabit(payload.id, {
+                              title: payload.title,
+                              description: payload.description,
+                              frequency: payload.frequency,
+                              targetCount: payload.targetCount,
+                              color: payload.color,
+                            })
+                          } catch (error) {
+                            console.error("[v0] Failed to update habit:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to update habit: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "deleteHabit":
+                        if (payload.id) {
+                          try {
+                            await deleteHabit(payload.id)
+                          } catch (error) {
+                            console.error("[v0] Failed to delete habit:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to delete habit: ${errorMessage}`)
+                          }
+                        }
+                        break
+                      case "logHabit":
+                        if (payload.habitId) {
+                          try {
+                            await logHabit(payload.habitId, payload.date || new Date().toISOString().split("T")[0], payload.count)
+                          } catch (error) {
+                            console.error("[v0] Failed to log habit:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to log habit: ${errorMessage}`)
                           }
                         }
                         break
@@ -831,6 +1132,45 @@ export function FloatingAssistant() {
               <span className="text-sm font-medium text-primary">
                 {toolCall.name === "getAppSummary" ? "Daily Summary" : "Timesheet Status"}
               </span>
+            </div>
+            {toolCall.result && (
+              <p className="text-sm whitespace-pre-wrap text-foreground/90">
+                {typeof toolCall.result === "string" ? toolCall.result : JSON.stringify(toolCall.result, null, 2)}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )
+    }
+    // Don't display summary tool results as separate cards - the AI will summarize them in its response
+    // This prevents duplication where both the tool result card and AI response show the same information
+    if (["getGoalsSummary", "getHabitsSummary", "getCalendarEvents", "getTimesheetStatus", "getAppSummary", "getNotesSummary"].includes(toolCall.name)) {
+      return null // Don't render summary tool results as cards - AI will include them in response
+    }
+    if (toolCall.name === "getHabitsSummary") {
+      return (
+        <Card key={index} className="mt-2 bg-background/50 border-primary/30">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Flame className="size-4 text-primary" />
+              <span className="text-sm font-medium text-primary">Habits Summary</span>
+            </div>
+            {toolCall.result && (
+              <p className="text-sm whitespace-pre-wrap text-foreground/90">
+                {typeof toolCall.result === "string" ? toolCall.result : JSON.stringify(toolCall.result, null, 2)}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )
+    }
+    if (toolCall.name === "getCalendarEvents") {
+      return (
+        <Card key={index} className="mt-2 bg-background/50 border-primary/30">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="size-4 text-primary" />
+              <span className="text-sm font-medium text-primary">Calendar Events</span>
             </div>
             {toolCall.result && (
               <p className="text-sm whitespace-pre-wrap text-foreground/90">
@@ -1136,7 +1476,7 @@ export function FloatingAssistant() {
                       I can help manage your tasks, notes, and timesheet. Try one of these:
                     </p>
                     <div className="grid grid-cols-2 gap-2 w-full max-w-[320px]">
-                      {suggestedPrompts.map((item, index) => (
+                      {getSuggestedPrompts(tasks, goals, habits, currentEntry, timeEntries).map((item, index) => (
                         <button
                           key={index}
                           onClick={() => handleSuggestedPrompt(item.prompt)}
@@ -1168,7 +1508,63 @@ export function FloatingAssistant() {
                             : "bg-secondary/50 text-foreground rounded-bl-md",
                         )}
                       >
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                        {message.role === "assistant" ? (
+                          <div className="w-full">
+                            {message.content.trim() ? (
+                              <>
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <div className="flex-1">
+                                    <AIMessage content={message.content} />
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(message.content)
+                                        toast({
+                                          title: "Copied",
+                                          description: "Message copied to clipboard",
+                                          duration: 2000,
+                                        })
+                                      }}
+                                      title="Copy message"
+                                    >
+                                      <Copy className="size-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={() => {
+                                        if (chatMessages.length > 0) {
+                                          const lastUserMessage = [...chatMessages]
+                                            .reverse()
+                                            .find((m) => m.role === "user")
+                                          if (lastUserMessage) {
+                                            sendMessage(lastUserMessage.content)
+                                          }
+                                        }
+                                      }}
+                                      title="Regenerate response"
+                                    >
+                                      <RotateCw className="size-3.5" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                {message.id && (
+                                  <AIFeedback
+                                    messageId={message.id}
+                                    sessionId={currentChatSessionId}
+                                  />
+                                )}
+                              </>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                        )}
                         {message.toolCalls?.map((toolCall, index) => renderToolResult(toolCall, index))}
                       </div>
                       {message.role === "user" && (
@@ -1182,22 +1578,25 @@ export function FloatingAssistant() {
                 {isLoading && (
                   <div className="flex gap-3 justify-start">
                     <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Bot className="size-4 text-primary" />
+                      <Bot className="size-4 text-primary animate-pulse" />
                     </div>
-                    <div className="bg-secondary/50 rounded-2xl rounded-bl-md px-4 py-3">
-                      <div className="flex gap-1.5">
-                        <div
-                          className="size-2 bg-primary/40 rounded-full animate-bounce"
-                          style={{ animationDelay: "0ms" }}
-                        />
-                        <div
-                          className="size-2 bg-primary/40 rounded-full animate-bounce"
-                          style={{ animationDelay: "150ms" }}
-                        />
-                        <div
-                          className="size-2 bg-primary/40 rounded-full animate-bounce"
-                          style={{ animationDelay: "300ms" }}
-                        />
+                    <div className="bg-secondary/50 rounded-2xl rounded-bl-md px-4 py-3 max-w-[85%]">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1.5">
+                          <div
+                            className="size-2 bg-primary/60 rounded-full animate-bounce"
+                            style={{ animationDelay: "0ms" }}
+                          />
+                          <div
+                            className="size-2 bg-primary/60 rounded-full animate-bounce"
+                            style={{ animationDelay: "150ms" }}
+                          />
+                          <div
+                            className="size-2 bg-primary/60 rounded-full animate-bounce"
+                            style={{ animationDelay: "300ms" }}
+                          />
+                        </div>
+                        <span className="text-xs text-muted-foreground ml-1">AI is thinking...</span>
                       </div>
                     </div>
                   </div>
