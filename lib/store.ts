@@ -1270,6 +1270,10 @@ export const useAppStore = create<AppState>()(
       },
 
       loginWithGoogle: async () => {
+        // Note: redirectTo uses window.location.origin which should work correctly.
+        // However, Supabase's "Site URL" setting in the dashboard takes precedence.
+        // If redirects go to localhost in production, check Supabase Dashboard →
+        // Authentication → URL Configuration → Site URL (must be your production URL)
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: {

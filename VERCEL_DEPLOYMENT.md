@@ -26,11 +26,23 @@ You **must** add these environment variables in your Vercel project settings:
 
 ## Supabase OAuth Redirect URLs
 
-After deployment, make sure to add your Vercel URL to Supabase:
+**CRITICAL: This is the most common cause of localhost redirect issues!**
 
-1. Go to your Supabase Dashboard → Authentication → URL Configuration
-2. Add your production URL: `https://your-vercel-app.vercel.app/auth/callback`
+After deployment, you **must** configure Supabase with your Vercel URL:
+
+### Step 1: Update Site URL (IMPORTANT!)
+1. Go to your Supabase Dashboard → **Authentication** → **URL Configuration**
+2. Find the **"Site URL"** field (this is the default redirect URL)
+3. **Change it from `http://localhost:3000` to your production URL**: `https://your-vercel-app.vercel.app`
+4. **This is critical** - Supabase uses the Site URL as the default redirect, which overrides the `redirectTo` parameter if not properly configured
+
+### Step 2: Add Redirect URLs
+1. In the same **URL Configuration** section, find **"Redirect URLs"**
+2. Add your production callback URL: `https://your-vercel-app.vercel.app/auth/callback`
 3. Also add your preview URLs if needed: `https://your-vercel-app-*.vercel.app/auth/callback`
+4. Keep `http://localhost:3000/auth/callback` for local development
+
+**Note:** The Site URL must match your production domain. If it's set to localhost, all OAuth redirects will go to localhost even in production!
 
 ## Troubleshooting 404 Errors
 
@@ -43,6 +55,10 @@ If you're getting a 404 error:
 
 ## Common Issues
 
+- **Redirecting to localhost after login**: 
+  - **Most common cause**: Site URL in Supabase is set to `http://localhost:3000`
+  - **Fix**: Go to Supabase Dashboard → Authentication → URL Configuration → Change Site URL to your Vercel URL
+  - Also verify redirect URLs include your production callback URL
 - **404 Error**: Usually means missing environment variables or build failure
 - **Authentication Errors**: Check Supabase redirect URLs are configured correctly
 - **API Errors**: Verify `OPENAI_API_KEY` is set correctly
