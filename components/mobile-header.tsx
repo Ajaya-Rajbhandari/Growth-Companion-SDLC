@@ -3,15 +3,12 @@
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Menu, Sparkles, LayoutDashboard, CheckSquare, FileText, Clock, Sun, Moon } from "lucide-react"
+import { Sparkles, Sun, Moon } from "lucide-react"
 import { useTheme } from "next-themes"
 
 export function MobileHeader() {
-  const { activeView, setActiveView, currentEntry } = useAppStore(
+  const { currentEntry } = useAppStore(
     useShallow((state) => ({
-      activeView: state.activeView,
-      setActiveView: state.setActiveView,
       currentEntry: state.currentEntry,
     })),
   )
@@ -31,48 +28,9 @@ export function MobileHeader() {
         )}
       </div>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon">
-            <Menu className="size-5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem
-            onClick={() => setActiveView("dashboard")}
-            className={activeView === "dashboard" ? "bg-accent" : ""}
-          >
-            <LayoutDashboard className="size-4 mr-2" />
-            Dashboard
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setActiveView("tasks")}
-            className={activeView === "tasks" ? "bg-accent" : ""}
-          >
-            <CheckSquare className="size-4 mr-2" />
-            Tasks
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setActiveView("notes")}
-            className={activeView === "notes" ? "bg-accent" : ""}
-          >
-            <FileText className="size-4 mr-2" />
-            Notes
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setActiveView("timesheet")}
-            className={activeView === "timesheet" ? "bg-accent" : ""}
-          >
-            <Clock className="size-4 mr-2" />
-            Timesheet
-            {currentEntry && <span className="ml-auto text-xs text-chart-2">Active</span>}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={toggleTheme}>
-            {isDark ? <Sun className="size-4 mr-2" /> : <Moon className="size-4 mr-2" />}
-            {isDark ? "Light Mode" : "Dark Mode"}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button variant="ghost" size="icon" onClick={toggleTheme} className="min-w-[44px] min-h-[44px]">
+        {isDark ? <Sun className="size-5" /> : <Moon className="size-5" />}
+      </Button>
     </header>
   )
 }

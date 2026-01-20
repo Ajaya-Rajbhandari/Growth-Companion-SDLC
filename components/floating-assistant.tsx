@@ -142,7 +142,12 @@ export function FloatingAssistant() {
   const [isDragging, setIsDragging] = useState(false)
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null)
   const [bubblePosition, setBubblePosition] = useState<{ x: number; y: number } | null>(null)
-  const [viewport, setViewport] = useState({ width: 0, height: 0 })
+  const [viewport, setViewport] = useState(() => {
+    if (typeof window !== "undefined") {
+      return { width: window.innerWidth, height: window.innerHeight }
+    }
+    return { width: 0, height: 0 }
+  })
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -187,7 +192,20 @@ export function FloatingAssistant() {
       try {
         const parsed = JSON.parse(savedPos) as { x: number; y: number }
         if (typeof parsed.x === "number" && typeof parsed.y === "number") {
-          setBubblePosition(parsed)
+          // Validate position is within viewport bounds
+          const isMobile = window.innerWidth < 768
+          const bottomNavHeight = isMobile ? 96 : 0 // Account for bottom nav height (80px + padding)
+          const maxX = window.innerWidth - 56 // button size
+          const minY = isMobile ? bottomNavHeight + 16 : 16 // Account for bottom nav on mobile
+          const maxY = Math.max(minY, window.innerHeight - 56)
+          
+          // Only use saved position if it's valid for current viewport
+          if (parsed.x >= 0 && parsed.x <= maxX && parsed.y >= minY && parsed.y <= maxY) {
+            setBubblePosition(parsed)
+          } else {
+            // Clear invalid saved position
+            window.localStorage.removeItem("assistantBubblePosition")
+          }
         }
       } catch {
         // ignore invalid storage
@@ -219,9 +237,12 @@ export function FloatingAssistant() {
       const margin = 16
       const radius = bubbleSize / 2
       const maxX = Math.max(margin, window.innerWidth - bubbleSize - margin)
-      const maxY = Math.max(margin, window.innerHeight - bubbleSize - margin)
-      const nextX = Math.min(maxX, Math.max(margin, event.clientX - radius))
-      const nextY = Math.min(maxY, Math.max(margin, event.clientY - radius))
+          const isMobile = window.innerWidth < 768
+          const bottomNavHeight = isMobile ? 96 : 0 // Account for bottom nav height (80px + padding)
+          const minY = isMobile ? bottomNavHeight + margin : margin // Account for bottom nav on mobile
+          const maxY = Math.max(minY, window.innerHeight - bubbleSize - margin)
+          const nextX = Math.min(maxX, Math.max(margin, event.clientX - radius))
+          const nextY = Math.min(maxY, Math.max(minY, event.clientY - radius))
       setDragPosition({ x: nextX, y: nextY })
     }
 
@@ -239,9 +260,12 @@ export function FloatingAssistant() {
       if (dragPosition) {
         const margin = 16
         const bubbleSize = 56
-        const maxY = Math.max(margin, window.innerHeight - bubbleSize - margin)
+        const isMobile = window.innerWidth < 768
+        const bottomNavHeight = isMobile ? 96 : 0 // Account for bottom nav height (80px + padding)
+        const minY = isMobile ? bottomNavHeight + margin : margin // Account for bottom nav on mobile
+        const maxY = Math.max(minY, window.innerHeight - bubbleSize - margin)
         const snappedX = event.clientX < window.innerWidth / 2 ? margin : window.innerWidth - bubbleSize - margin
-        const snappedY = Math.min(maxY, Math.max(margin, dragPosition.y))
+        const snappedY = Math.min(maxY, Math.max(minY, dragPosition.y))
         setBubblePosition({ x: snappedX, y: snappedY })
       }
       setDragPosition(null)
@@ -838,17 +862,101 @@ export function FloatingAssistant() {
     return { left: `${left}px`, top: `${top}px` }
   })()
 
+  // Always render the bubble button - ensure it's always in DOM
+  if (typeof window === "undefined") {
+    return null // SSR guard
+  }
+
+  // Debug: Log when component renders
+  useEffect(() => {
+    console.log("FloatingAssistant mounted, isChatOpen:", isChatOpen, "viewport:", viewport)
+  }, [])
+
   return (
     <>
-      {/* Floating Bubble Button */}
+      {/* Floating Bubble Button - Always visible on mobile */}
       <button
         ref={bubbleRef}
         onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture(event.pointerId)
+          event.preventDefault()
+          event.stopPropagation()
+          try {
+            event.currentTarget.setPointerCapture(event.pointerId)
+          } catch (e) {
+            // Pointer capture may fail on some devices, continue anyway
+          }
           dragStartRef.current = { x: event.clientX, y: event.clientY }
           dragMovedRef.current = false
           suppressClickRef.current = false
           setIsDragging(true)
+        }}
+        onTouchStart={(event) => {
+          // Handle touch start for better mobile support
+          if (event.touches.length === 1) {
+            const touch = event.touches[0]
+            dragStartRef.current = { x: touch.clientX, y: touch.clientY }
+            dragMovedRef.current = false
+            suppressClickRef.current = false
+            setIsDragging(true)
+          }
+        }}
+        onTouchMove={(event) => {
+          // Handle touch move for better mobile support
+          if (dragStartRef.current && event.touches.length === 1) {
+            event.preventDefault()
+            event.stopPropagation()
+            const touch = event.touches[0]
+            const { x, y } = dragStartRef.current
+            if (Math.abs(touch.clientX - x) > 4 || Math.abs(touch.clientY - y) > 4) {
+              dragMovedRef.current = true
+              setIsDragging(true)
+            }
+            const bubbleSize = 56
+            const margin = 16
+            const radius = bubbleSize / 2
+            const isMobile = window.innerWidth < 768
+            const bottomNavHeight = isMobile ? 96 : 0 // Account for bottom nav height (80px + padding)
+            const minY = isMobile ? bottomNavHeight + margin : margin // Account for bottom nav on mobile
+            const maxX = Math.max(margin, window.innerWidth - bubbleSize - margin)
+            const maxY = Math.max(minY, window.innerHeight - bubbleSize - margin)
+            const nextX = Math.min(maxX, Math.max(margin, touch.clientX - radius))
+            const nextY = Math.min(maxY, Math.max(minY, touch.clientY - radius))
+            setDragPosition({ x: nextX, y: nextY })
+          }
+        }}
+        onTouchEnd={(event) => {
+          // Handle touch end for better mobile support
+          if (dragStartRef.current) {
+            setIsDragging(false)
+            if (dragMovedRef.current) {
+              const touch = event.changedTouches[0] || event.touches[0]
+              if (touch) {
+                const nextSide = touch.clientX < window.innerWidth / 2 ? "left" : "right"
+                setDockSide(nextSide)
+              }
+              suppressClickRef.current = true
+              window.setTimeout(() => {
+                suppressClickRef.current = false
+              }, 200)
+            }
+            if (dragPosition) {
+              const touch = event.changedTouches[0] || event.touches[0]
+              if (touch) {
+                const margin = 16
+                const bubbleSize = 56
+                const isMobile = window.innerWidth < 768
+                const bottomNavHeight = isMobile ? 96 : 0 // Account for bottom nav height (80px + padding)
+                const minY = isMobile ? bottomNavHeight + margin : margin
+                const maxY = Math.max(minY, window.innerHeight - bubbleSize - margin)
+                const snappedX = touch.clientX < window.innerWidth / 2 ? margin : window.innerWidth - bubbleSize - margin
+                const snappedY = Math.min(maxY, Math.max(minY, dragPosition.y))
+                setBubblePosition({ x: snappedX, y: snappedY })
+              }
+            }
+            setDragPosition(null)
+            dragStartRef.current = null
+            dragMovedRef.current = false
+          }
         }}
         onClick={() => {
           if (!dragMovedRef.current && !suppressClickRef.current) {
@@ -856,22 +964,42 @@ export function FloatingAssistant() {
           }
         }}
         className={cn(
-          "fixed size-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl flex items-center justify-center z-40 hover:scale-110 cursor-grab transition-all duration-300",
+          "fixed size-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl flex items-center justify-center z-[60] hover:scale-110 cursor-grab transition-all duration-300 touch-none select-none",
           isDragging && "scale-110 cursor-grabbing shadow-2xl ring-2 ring-primary/40",
           isDragging && "transition-none",
-          !isDragging && !bubblePosition && "bottom-6",
-          !isDragging && !bubblePosition && (dockSide === "left" ? "left-6" : "right-6"),
-          isChatOpen && "scale-0",
+          !isDragging && !bubblePosition && "bottom-24 lg:bottom-6",
+          !isDragging && !bubblePosition && (dockSide === "left" ? "left-4 lg:left-6" : "right-4 lg:right-6"),
+          isChatOpen && "hidden",
         )}
-        style={
-          (isDragging && dragPosition) || bubblePosition
-            ? {
-                left: `${(dragPosition || bubblePosition)?.x}px`,
-                top: `${(dragPosition || bubblePosition)?.y}px`,
-              }
-            : undefined
-        }
+        style={{
+          touchAction: "none",
+          WebkitUserSelect: "none",
+          userSelect: "none",
+          ...((isDragging && dragPosition) || bubblePosition
+            ? (() => {
+                const pos = dragPosition || bubblePosition
+                if (!pos) return {}
+                
+                // Ensure position is within viewport bounds
+                const isMobile = viewport.width < 768 || window.innerWidth < 768
+                const buttonSize = 56
+                const bottomNavHeight = isMobile ? 96 : 0 // Account for bottom nav height (80px + padding)
+                const minY = isMobile ? bottomNavHeight + 16 : 16 // Account for bottom nav on mobile
+                const maxX = Math.max(16, (viewport.width || window.innerWidth) - buttonSize - 16)
+                const maxY = Math.max(minY, (viewport.height || window.innerHeight) - buttonSize - 16)
+                
+                const clampedX = Math.min(maxX, Math.max(16, pos.x))
+                const clampedY = Math.min(maxY, Math.max(minY, pos.y))
+                
+                return {
+                  left: `${clampedX}px`,
+                  top: `${clampedY}px`,
+                }
+              })()
+            : undefined),
+        }}
         aria-label="Open AI Assistant"
+        data-testid="floating-assistant-button"
       >
         <MessageCircle className="size-6" />
       </button>
@@ -883,6 +1011,7 @@ export function FloatingAssistant() {
             "fixed w-full md:w-[420px] h-screen md:h-[650px] bg-background rounded-none md:rounded-xl shadow-2xl border-0 md:border border-border flex flex-col z-50 overflow-hidden",
             !isDesktop && "left-0 bottom-0",
             isDesktop && !panelStyle && (dockSide === "left" ? "left-4 bottom-4" : "right-4 bottom-4"),
+            "pb-safe",
           )}
           style={panelStyle}
         >

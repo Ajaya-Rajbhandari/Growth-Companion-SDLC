@@ -1,14 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAppStore, type Note } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Plus, Trash2, Edit3, AlertCircle, Lightbulb, Search, Bold, Italic, Code, X, Tag, Folder } from "lucide-react"
+import { Plus, Trash2, Edit3, AlertCircle, Lightbulb, Search, Bold, Italic, Code, X, Tag, Folder, ChevronLeft, ChevronRight, ArrowUp } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "@/components/ui/use-toast"
 
@@ -40,6 +41,8 @@ export function NotesView() {
   const [titleError, setTitleError] = useState("")
   const [contentWarning, setContentWarning] = useState("")
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(20)
 
   const handleAddNote = () => {
     setTitleError("")
@@ -156,6 +159,17 @@ export function NotesView() {
     return matchesSearch && matchesCategory
   })
 
+  // Pagination
+  const totalPages = Math.ceil(filteredNotes.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedNotes = filteredNotes.slice(startIndex, endIndex)
+
+  // Reset to page 1 when filter or search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filterCategory, searchQuery])
+
   const aiSuggestions = []
   if (notes.length === 0) {
     aiSuggestions.push({
@@ -190,10 +204,10 @@ export function NotesView() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-3xl font-bold text-foreground">Notes</h2>
+          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground">Notes</h2>
           <p className="text-muted-foreground mt-1">Capture and organize your thoughts</p>
         </div>
         <Dialog open={isAddingNote} onOpenChange={setIsAddingNote}>
@@ -349,6 +363,55 @@ export function NotesView() {
         />
       </div>
 
+      {/* Pagination Controls - Top */}
+      {filteredNotes.length > itemsPerPage && (
+        <Card className="bg-card border-border">
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm text-muted-foreground">Items per page:</span>
+                <Select value={itemsPerPage.toString()} onValueChange={(v) => { setItemsPerPage(Number(v)); setCurrentPage(1) }}>
+                  <SelectTrigger className="w-20 h-9 text-xs sm:text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="min-h-[44px] sm:min-h-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="hidden sm:inline">Previous</span>
+                </Button>
+                <span className="text-xs sm:text-sm text-foreground px-3">
+                  Page {currentPage} of {totalPages} ({filteredNotes.length} total)
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="min-h-[44px] sm:min-h-0"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {selectedNote ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
           <div className="lg:col-span-1 bg-card border border-border rounded-lg p-4 overflow-y-auto">
@@ -358,8 +421,52 @@ export function NotesView() {
                 <X className="size-4" />
               </Button>
             </div>
+            
+            {/* Pagination Controls - Sidebar Top */}
+            {filteredNotes.length > itemsPerPage && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 mb-4 pb-4 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Items:</span>
+                  <Select value={itemsPerPage.toString()} onValueChange={(v) => { setItemsPerPage(Number(v)); setCurrentPage(1) }}>
+                    <SelectTrigger className="w-16 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="h-8 text-xs"
+                  >
+                    <ChevronLeft className="h-3 w-3" />
+                  </Button>
+                  <span className="text-xs text-foreground px-2">
+                    {currentPage}/{totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="h-8 text-xs"
+                  >
+                    <ChevronRight className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            
             <div className="space-y-2">
-              {filteredNotes.map((note) => (
+              {paginatedNotes.map((note) => (
                 <button
                   key={note.id}
                   onClick={() => setSelectedNote(note)}
@@ -387,7 +494,7 @@ export function NotesView() {
           <div className="lg:col-span-2 bg-card border border-border rounded-lg p-6 overflow-y-auto space-y-4">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-2xl font-bold text-foreground">{selectedNote.title}</h2>
+                <h2 className="text-xl sm:text-2xl font-bold text-foreground">{selectedNote.title}</h2>
                 <p className="text-xs text-muted-foreground mt-1">
                   {new Date(selectedNote.updatedAt).toLocaleString()}
                 </p>
@@ -506,7 +613,7 @@ export function NotesView() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredNotes.map((note) => (
+            {paginatedNotes.map((note) => (
               <Card
                 key={note.id}
                 className="bg-card border-border cursor-pointer hover:shadow-lg transition-all"

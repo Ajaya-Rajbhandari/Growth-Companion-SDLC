@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,7 +20,10 @@ import {
   CheckCircle2, 
   Circle,
   TrendingUp,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUp
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { format, parseISO, startOfDay } from "date-fns"
@@ -50,6 +53,8 @@ export function GoalsView() {
   const [selectedGoalForMilestone, setSelectedGoalForMilestone] = useState<Goal | null>(null)
   const [newMilestoneTitle, setNewMilestoneTitle] = useState("")
   const [newMilestoneDate, setNewMilestoneDate] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(20)
 
   const filteredGoals = goals.filter((goal) => {
     if (filter === "active") return goal.status === "active"
@@ -57,6 +62,17 @@ export function GoalsView() {
     if (filter === "paused") return goal.status === "paused"
     return true
   })
+
+  // Pagination
+  const totalPages = Math.ceil(filteredGoals.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedGoals = filteredGoals.slice(startIndex, endIndex)
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filter])
 
   const handleAddGoal = async () => {
     if (!newGoalTitle.trim()) {
@@ -182,10 +198,10 @@ export function GoalsView() {
     : 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Goals</h2>
+          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight">Goals</h2>
           <p className="text-muted-foreground">Set and track your long-term objectives</p>
         </div>
         <Dialog open={showAddGoalDialog} onOpenChange={setShowAddGoalDialog}>
@@ -314,7 +330,7 @@ export function GoalsView() {
         </Card>
       ) : (
         <div className="grid gap-4">
-          {filteredGoals.map((goal) => (
+          {paginatedGoals.map((goal) => (
             <Card key={goal.id} className="relative">
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -486,6 +502,63 @@ export function GoalsView() {
               </CardContent>
             </Card>
           ))}
+          
+          {/* Pagination Controls */}
+          {filteredGoals.length > itemsPerPage && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-4 border-t border-border">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Items per page:</span>
+                <Select value={itemsPerPage.toString()} onValueChange={(v) => { setItemsPerPage(Number(v)); setCurrentPage(1) }}>
+                  <SelectTrigger className="w-20 h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="min-h-[44px] sm:min-h-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="hidden sm:inline">Previous</span>
+                </Button>
+                <span className="text-sm text-foreground px-3">
+                  Page {currentPage} of {totalPages} ({filteredGoals.length} total)
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="min-h-[44px] sm:min-h-0"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          {/* Scroll to Top Button */}
+          {currentPage > 1 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="fixed bottom-32 right-4 z-30 rounded-full shadow-lg min-h-[44px] sm:min-h-0"
+            >
+              <ArrowUp className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       )}
 

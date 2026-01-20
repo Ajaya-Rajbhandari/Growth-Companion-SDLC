@@ -320,6 +320,7 @@ export function TimesheetView() {
     addTimeCategory,
     updateTimeCategory,
     deleteTimeCategory,
+    getTodayTimeEntries,
   } = useAppStore(
     useShallow((state) => ({
       timeEntries: state.timeEntries,
@@ -343,6 +344,7 @@ export function TimesheetView() {
       addTimeCategory: state.addTimeCategory,
       updateTimeCategory: state.updateTimeCategory,
       deleteTimeCategory: state.deleteTimeCategory,
+      getTodayTimeEntries: state.getTodayTimeEntries,
     })),
   )
 
@@ -1133,7 +1135,7 @@ export function TimesheetView() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2 sm:space-y-3 w-full max-w-full overflow-x-hidden [&>*]:max-w-full [&>*]:overflow-x-hidden">
       {activeBreak && (
         <BreakModePanel
           activeBreak={activeBreak}
@@ -1145,11 +1147,11 @@ export function TimesheetView() {
         />
       )}
 
-      <div className={cn("space-y-6", activeBreak && "pointer-events-none opacity-50")}>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className={cn("space-y-2 sm:space-y-3", activeBreak && "pointer-events-none opacity-50")}>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
           <div>
-            <h2 className="text-2xl font-semibold text-foreground">Timesheet</h2>
-            <p className="text-foreground/70">Track your working hours automatically.</p>
+            <h2 className="text-lg sm:text-xl font-semibold text-foreground">Timesheet</h2>
+            <p className="text-xs text-foreground/70">Track your working hours automatically.</p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -1157,16 +1159,17 @@ export function TimesheetView() {
               variant="outline"
               size="icon"
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className="bg-transparent"
+              className="bg-transparent min-w-[44px] min-h-[44px]"
               title={soundEnabled ? "Disable break alarm" : "Enable break alarm"}
             >
               {soundEnabled ? <Volume2 className="size-4" /> : <BellOff className="size-4" />}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2 bg-transparent">
+                <Button variant="outline" className="gap-2 bg-transparent min-h-[44px]">
                   <Download className="size-4" />
-                  Export
+                  <span className="hidden sm:inline">Export</span>
+                  <span className="sm:hidden">Export</span>
                 </Button>
               </DropdownMenuTrigger>
               {/* Update export dropdown around line 720 to add Excel export option */}
@@ -1191,39 +1194,39 @@ export function TimesheetView() {
 
         {/* Clock In/Out Card */}
         {!currentEntry ? (
-          <Card className="border-2 border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-transparent">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Play className="h-5 w-5" />
-                Start Your Work Day
+          <Card className="border-2 border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-transparent w-full max-w-full overflow-hidden !px-0">
+            <CardHeader className="p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+              <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                <Play className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">Start Your Work Day</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-2 p-2 sm:p-3 md:p-4 w-full max-w-full overflow-hidden !px-2 sm:!px-3 md:!px-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">What are you working on?</label>
+                <label className="text-xs sm:text-sm font-medium">What are you working on?</label>
                 <Input
                   placeholder="e.g., Frontend development, Meeting, Code review..."
                   value={workTitle}
                   onChange={(e) => setWorkTitle(e.target.value)}
                   onKeyPress={(e) => e.key === "Enter" && handleClockIn()}
-                  className="text-base"
+                  className="text-base h-12 sm:h-10 w-full max-w-full"
                 />
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">Category (optional)</label>
+                  <label className="text-xs sm:text-sm font-medium">Category (optional)</label>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setShowCategoryManagement(true)}
-                    className="h-6 text-xs"
+                    className="h-8 sm:h-6 text-xs min-w-[44px] min-h-[44px] sm:min-h-0"
                   >
                     Manage
                   </Button>
                 </div>
                 <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-12 sm:h-10 w-full max-w-full">
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1262,22 +1265,42 @@ export function TimesheetView() {
                 </div>
               )}
 
-              <div className="flex gap-2">
-                <Button onClick={handleClockIn} className="flex-1" size="lg">
-                  <Play className="mr-2 h-4 w-4" />
-                  Clock In
-                </Button>
+              <div className="flex flex-col sm:flex-row gap-2 w-full max-w-full">
+                {(() => {
+                  const todayEntries = getTodayTimeEntries()
+                  const hasClockedInToday = todayEntries.length > 0
+                  const isDisabled = !!currentEntry || hasClockedInToday
+                  if (hasClockedInToday && !currentEntry) {
+                    return (
+                      <Button className="flex-1 w-full sm:w-auto min-w-0" size="lg" disabled>
+                        <Play className="mr-2 h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">Already Clocked In Today</span>
+                      </Button>
+                    )
+                  }
+                  return (
+                    <Button 
+                      onClick={handleClockIn}
+                      className="flex-1 w-full sm:w-auto min-w-0" 
+                      size="lg"
+                      disabled={isDisabled}
+                    >
+                      <Play className="mr-2 h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">Clock In</span>
+                    </Button>
+                  )
+                })()}
                 <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="lg">
-                      Save as Template
+                    <Button variant="outline" size="lg" className="w-full sm:w-auto min-w-0 flex-shrink-0">
+                      <span className="truncate">Save as Template</span>
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Save Work Template</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       <div>
                         <label className="text-sm font-medium">Template Name</label>
                         <Input
@@ -1297,29 +1320,29 @@ export function TimesheetView() {
           </Card>
         ) : (
           // modified card for ongoing session with task management buttons
-            <Card className="border-l-4 border-l-green-500 bg-card">
-            <CardContent className="p-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
+            <Card className="border-l-4 border-l-green-500 bg-card w-full max-w-full">
+            <CardContent className="p-2 sm:p-3 md:p-4 w-full max-w-full">
+              <div className="space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
                     <div className="flex items-center gap-2 text-foreground">
-                      <div className="h-3 w-3 animate-pulse rounded-full bg-green-500" />
-                      <div className="truncate max-w-[200px] sm:max-w-none font-semibold text-lg">
+                      <div className="h-3 w-3 animate-pulse rounded-full bg-green-500 flex-shrink-0" />
+                      <div className="truncate max-w-[200px] sm:max-w-none font-semibold text-base sm:text-lg">
                         {currentEntry.title || "Working"}
                       </div>
-                      <Badge variant="secondary">In Progress</Badge>
+                      <Badge variant="secondary" className="text-xs">In Progress</Badge>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm text-foreground/70 mb-1">
+                      <p className="text-xs sm:text-sm text-foreground/70 mb-1">
                         Working since {formatTime(currentEntry.clockIn)}
                       </p>
-                      <div className="text-5xl font-bold text-foreground font-mono">
+                      <div className="text-2xl sm:text-4xl font-bold text-foreground font-mono">
                         {elapsedTime.hours}h {elapsedTime.minutes}m
-                        <span className="text-2xl text-foreground/70 ml-1">
+                        <span className="text-base sm:text-xl text-foreground/70 ml-1">
                           {String(elapsedTime.seconds).padStart(2, "0")}s
                         </span>
                       </div>
                       {currentEntry.breakMinutes > 0 && (
-                        <p className="text-sm text-foreground/70 mt-2">
+                        <p className="text-xs sm:text-sm text-foreground/70 mt-2">
                           Total break: {currentEntry.breakMinutes} minutes ({(currentEntry.breaks || []).length} break
                           {(currentEntry.breaks || []).length !== 1 ? "s" : ""})
                         </p>
@@ -1345,7 +1368,7 @@ export function TimesheetView() {
                               <Badge
                                 variant="outline"
                                 className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
-                                onClick={() => openEditBreakDialog(entry.id, breakPeriod.id, breakPeriod.title)}
+                                onClick={() => openEditBreakDialog(currentEntry.id, breakPeriod.id, breakPeriod.title)}
                                 title="Click to edit break title"
                               >
                                 {getBreakTypeLabel(breakPeriod.type, breakPeriod.title)}
@@ -1411,20 +1434,20 @@ export function TimesheetView() {
 
                 {!activeBreak && (
                   // add task management buttons
-                  <div className="flex flex-wrap gap-3">
-                    <Button onClick={openEditTaskDialog} variant="outline" className="gap-2 bg-transparent">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
+                    <Button onClick={openEditTaskDialog} variant="outline" className="gap-2 bg-transparent w-full sm:w-auto min-h-[44px]">
                       <Clock className="h-4 w-4" />
                       Edit Task
                     </Button>
-                    <Button onClick={() => setSwitchTaskDialogOpen(true)} variant="outline" className="gap-2">
+                    <Button onClick={() => setSwitchTaskDialogOpen(true)} variant="outline" className="gap-2 w-full sm:w-auto min-h-[44px]">
                       <Play className="h-4 w-4" />
                       Switch Task
                     </Button>
-                    <Button onClick={() => setBreakDialogOpen(true)} variant="outline" className="gap-2">
+                    <Button onClick={() => setBreakDialogOpen(true)} variant="outline" className="gap-2 w-full sm:w-auto min-h-[44px]">
                       <Coffee className="h-4 w-4" />
                       Take Break
                     </Button>
-                    <Button onClick={handleClockOut} variant="destructive" className="gap-2 ml-auto">
+                    <Button onClick={handleClockOut} variant="destructive" className="gap-2 w-full sm:w-auto sm:ml-auto min-h-[44px]">
                       <Square className="h-4 w-4" />
                       Clock Out
                     </Button>
@@ -1443,47 +1466,47 @@ export function TimesheetView() {
         )}
 
         {/* Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="bg-card border-border">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-foreground/70">Today</CardTitle>
-                <Calendar className="size-4 text-primary" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 w-full max-w-full">
+            <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+                <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">Today</CardTitle>
+                <Calendar className="size-4 sm:size-5 text-primary flex-shrink-0" />
             </CardHeader>
-            <CardContent>
-                  <div className="text-2xl font-bold text-foreground">{todayHours.toFixed(1)}h</div>
+            <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+                  <div className="text-xl sm:text-2xl font-bold text-foreground">{todayHours.toFixed(1)}h</div>
                   <p className="text-xs text-foreground/70 mt-1">{todayEntries.length} session(s)</p>
             </CardContent>
           </Card>
 
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-foreground/70">This Week</CardTitle>
-              <Timer className="size-4 text-chart-2" />
+          <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 p-3 sm:p-4 md:p-5 !px-3 sm:!px-4 md:!px-5">
+              <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">This Week</CardTitle>
+              <Timer className="size-4 sm:size-5 text-chart-2 flex-shrink-0" />
             </CardHeader>
-            <CardContent>
-                  <div className="text-2xl font-bold text-foreground">{weeklyHours.toFixed(1)}h</div>
+            <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+                  <div className="text-xl sm:text-2xl font-bold text-foreground">{weeklyHours.toFixed(1)}h</div>
                   <p className="text-xs text-foreground/70 mt-1">{thisWeekEntries.length} session(s)</p>
             </CardContent>
           </Card>
 
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-foreground/70">Period Hours</CardTitle>
-              <CalendarRange className="size-4 text-chart-3" />
+          <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 p-3 sm:p-4 md:p-5 !px-3 sm:!px-4 md:!px-5">
+              <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">Period Hours</CardTitle>
+              <CalendarRange className="size-4 sm:size-5 text-chart-3 flex-shrink-0" />
             </CardHeader>
-            <CardContent>
-                  <div className="text-2xl font-bold text-foreground">{periodHours.toFixed(1)}h</div>
+            <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+                  <div className="text-xl sm:text-2xl font-bold text-foreground">{periodHours.toFixed(1)}h</div>
                   <p className="text-xs text-foreground/70 mt-1">{filteredEntries.length} session(s)</p>
             </CardContent>
           </Card>
 
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-foreground/70">Total Breaks</CardTitle>
-              <Coffee className="size-4 text-chart-4" />
+          <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 p-3 sm:p-4 md:p-5 !px-3 sm:!px-4 md:!px-5">
+              <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">Total Breaks</CardTitle>
+              <Coffee className="size-4 sm:size-5 text-chart-4 flex-shrink-0" />
             </CardHeader>
-            <CardContent>
-                  <div className="text-2xl font-bold text-foreground">{periodBreakMinutes}m</div>
+            <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+                  <div className="text-xl sm:text-2xl font-bold text-foreground">{periodBreakMinutes}m</div>
                   <p className="text-xs text-foreground/70 mt-1">
                     {Math.floor(periodBreakMinutes / 60)}h {periodBreakMinutes % 60}m total
                   </p>
@@ -1491,27 +1514,27 @@ export function TimesheetView() {
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="bg-card border-border">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-foreground/70">Weekly Summary</CardTitle>
-                <Timer className="size-4 text-primary" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 w-full max-w-full">
+            <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+                <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">Weekly Summary</CardTitle>
+                <Timer className="size-4 sm:size-5 text-primary flex-shrink-0" />
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-foreground">{activeDaysWeek} day(s)</div>
+              <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+                <div className="text-xl sm:text-2xl font-bold text-foreground">{activeDaysWeek} day(s)</div>
                 <p className="text-xs text-foreground/70 mt-1">
                   {weeklyHours.toFixed(1)}h, {weeklyBreakMinutes}m breaks
                 </p>
               </CardContent>
             </Card>
 
-            <Card className="bg-card border-border">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-foreground/70">Work Streak</CardTitle>
-                <CalendarDays className="size-4 text-chart-2" />
+            <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+                <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">Work Streak</CardTitle>
+                <CalendarDays className="size-4 sm:size-5 text-chart-2 flex-shrink-0" />
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-foreground">{streakDays} day(s)</div>
+              <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+                <div className="text-xl sm:text-2xl font-bold text-foreground">{streakDays} day(s)</div>
                 <p className="text-xs text-foreground/70 mt-1">
                   {streakDays > 0 ? "Keep it going!" : "Log time today to start"}
                 </p>
@@ -1519,43 +1542,45 @@ export function TimesheetView() {
             </Card>
           </div>
 
-          <Card className="border-border bg-card">
-            <CardHeader>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Time History</h3>
-                <div className="text-sm text-foreground/70 bg-muted/50 px-3 py-1 rounded-lg">
+          <Card className="border-border bg-card w-full max-w-full overflow-hidden !px-0">
+            <CardHeader className="p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+            <div className="space-y-1.5 sm:space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <h3 className="text-sm sm:text-base font-semibold">Time History</h3>
+                <div className="text-xs sm:text-sm text-foreground/70 bg-muted/50 px-2 sm:px-3 py-1 rounded-lg">
                   {viewPeriod === "daily" && "Daily view"}
                   {viewPeriod === "weekly" && `${periodStats.sessionCount} sessions`}
                   {viewPeriod === "monthly" && `${periodStats.totalHours}h total`}
                   {viewPeriod === "yearly" && `${periodStats.sessionCount} sessions`}
                 </div>
               </div>
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-2">
-                  <Button variant="ghost" onClick={handlePrevPeriod} className="hover:bg-secondary">
-                    <ChevronLeft className="size-4 mr-1" />
-                    Previous
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                  <Button variant="ghost" onClick={handlePrevPeriod} className="hover:bg-secondary min-h-[44px] text-xs sm:text-sm">
+                    <ChevronLeft className="size-3 sm:size-4 mr-1" />
+                    <span className="hidden sm:inline">Previous</span>
+                    <span className="sm:hidden">Prev</span>
                   </Button>
-                  <div className="px-4 py-2 bg-card border border-border rounded-lg text-center min-w-48">
-                    <p className="text-sm font-medium text-foreground">{getPeriodLabel(selectedDate, viewPeriod)}</p>
-                    <p className="text-xs text-foreground/70 mt-1">
+                  <div className="px-2 sm:px-4 py-2 bg-card border border-border rounded-lg text-center min-w-[100px] sm:min-w-48 flex-1 sm:flex-none max-w-full">
+                    <p className="text-xs sm:text-sm font-medium text-foreground">{getPeriodLabel(selectedDate, viewPeriod)}</p>
+                    <p className="text-[10px] sm:text-xs text-foreground/70 mt-1">
                       {viewPeriod.charAt(0).toUpperCase() + viewPeriod.slice(1)} View
                     </p>
                   </div>
-                  <Button variant="ghost" onClick={handleToday} className="text-primary hover:bg-primary/10">
+                  <Button variant="ghost" onClick={handleToday} className="text-primary hover:bg-primary/10 min-h-[44px] text-xs sm:text-sm">
                     Today
                   </Button>
-                  <Button variant="ghost" onClick={handleNextPeriod} className="hover:bg-secondary">
-                    Next
-                    <ChevronRight className="size-4 ml-1" />
+                  <Button variant="ghost" onClick={handleNextPeriod} className="hover:bg-secondary min-h-[44px] text-xs sm:text-sm">
+                    <span className="hidden sm:inline">Next</span>
+                    <span className="sm:hidden">Next</span>
+                    <ChevronRight className="size-3 sm:size-4 ml-1" />
                   </Button>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <Button
                     onClick={exportToCSV}
                     variant="outline"
-                    className="border-border hover:bg-secondary bg-transparent"
+                    className="border-border hover:bg-secondary bg-transparent w-full sm:w-auto min-h-[44px]"
                   >
                     <Download className="size-4 mr-2" />
                     CSV
@@ -1563,7 +1588,7 @@ export function TimesheetView() {
                   <Button
                     onClick={exportToJSON}
                     variant="outline"
-                    className="border-border hover:bg-secondary bg-transparent"
+                    className="border-border hover:bg-secondary bg-transparent w-full sm:w-auto min-h-[44px]"
                   >
                     <Download className="size-4 mr-2" />
                     JSON
@@ -1572,7 +1597,7 @@ export function TimesheetView() {
                   <Button
                     onClick={exportToExcel}
                     variant="outline"
-                    className="border-border hover:bg-secondary bg-transparent"
+                    className="border-border hover:bg-secondary bg-transparent w-full sm:w-auto min-h-[44px]"
                   >
                     <FileSpreadsheet className="size-4 mr-2" />
                     Excel
@@ -1580,9 +1605,9 @@ export function TimesheetView() {
                 </div>
               </div>
               {/* Rest of the card header content */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pt-2 border-t border-border gap-4">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg overflow-x-auto">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pt-2 border-t border-border gap-3 sm:gap-4">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-wrap w-full sm:w-auto">
+                  <div className="grid grid-cols-4 sm:flex items-center gap-1 bg-muted/50 p-1 rounded-lg w-full sm:w-auto max-w-full">
                     {(["daily", "weekly", "monthly", "yearly"] as ViewPeriod[]).map((period) => (
                     <Button
                       key={period}
@@ -1590,7 +1615,7 @@ export function TimesheetView() {
                       size="sm"
                       onClick={() => setViewPeriod(period)}
                       className={cn(
-                        "capitalize text-xs px-2 sm:px-3 whitespace-nowrap transition-all duration-200",
+                        "capitalize text-xs px-2 sm:px-3 whitespace-nowrap transition-all duration-200 min-h-[44px] sm:min-h-0",
                         viewPeriod === period && "bg-background shadow-sm ring-1 ring-primary/20",
                       )}
                     >
@@ -1602,20 +1627,20 @@ export function TimesheetView() {
                       <span className="sm:hidden">{period.charAt(0).toUpperCase()}</span>
                     </Button>
                   ))}
+                  </div>
                 </div>
               </div>
             </div>
-            </div>
           </CardHeader>
 
-          <CardContent>
+          <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
             {sortedDates.length === 0 ? (
-              <div className="text-center py-8 text-foreground/70">
-                <Clock className="size-12 mx-auto mb-3 opacity-50" />
-                <p>No entries for this period</p>
+              <div className="text-center py-4 text-foreground/70">
+                <Clock className="size-5 sm:size-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm sm:text-base">No entries for this period</p>
               </div>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-3 sm:space-y-4">
                 {viewPeriod === "daily" &&
                   sortedDates.map((date) => {
                     const dateEntries = groupedEntries[date]
@@ -1624,15 +1649,153 @@ export function TimesheetView() {
 
                     return (
                       <div key={date} className="space-y-2">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-sm">
-                          <span className="font-medium text-foreground">{formatDate(date)}</span>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                          <span className="font-medium text-sm sm:text-base text-foreground">{formatDate(date)}</span>
                           <span className="text-foreground/70 text-xs sm:text-sm">
                             {dayTotal.toFixed(1)}h worked, {dayBreaks}m breaks
                           </span>
                         </div>
-                        <div className="rounded-lg border border-border overflow-hidden">
-                          <div className="overflow-x-auto">
-                            <Table>
+                        <div className="rounded-lg border border-border overflow-hidden w-full max-w-full">
+                          {/* Mobile Card Layout */}
+                          <div className="block sm:hidden space-y-2 p-2 sm:p-3 w-full max-w-full">
+                            {dateEntries.map((entry) => {
+                              const duration = calculateDuration(entry.clockIn, entry.clockOut, entry.breakMinutes)
+                              const isCurrentEntry = currentEntry?.id === entry.id && !entry.clockOut
+                              const breakDuration =
+                                entry.breaks?.reduce(
+                                  (total, b) =>
+                                    total +
+                                    (new Date(b.endTime || Date.now()).getTime() - new Date(b.startTime).getTime()),
+                                  0,
+                                ) || 0
+                              const breakMinutesCount = Math.round(breakDuration / (1000 * 60))
+
+                              return (
+                                <Card key={entry.id} className={cn("bg-card border-border", isCurrentEntry && "bg-primary/5 border-primary/20")}>
+                                  <CardContent className="p-3 space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          {isCurrentEntry && (
+                                            <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+                                          )}
+                                          <span className="font-semibold text-sm truncate">
+                                            {entry.title || (
+                                              <span className="text-foreground/70 italic">No task specified</span>
+                                            )}
+                                          </span>
+                                          {entry.category && (() => {
+                                            const category = timeCategories.find((c) => c.id === entry.category)
+                                            return category ? (
+                                              <Badge
+                                                variant="outline"
+                                                className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                                                style={{
+                                                  borderColor: category.color,
+                                                  color: category.color,
+                                                  backgroundColor: `${category.color}15`,
+                                                }}
+                                              >
+                                                {category.name}
+                                              </Badge>
+                                            ) : null
+                                          })()}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                                          <div>
+                                            <span className="font-medium">In:</span> {formatTime(entry.clockIn)}
+                                          </div>
+                                          <div>
+                                            <span className="font-medium">Out:</span>{" "}
+                                            {entry.clockOut ? (
+                                              formatTime(entry.clockOut)
+                                            ) : (
+                                              <Badge variant="secondary" className="bg-primary/20 text-primary border-primary/30 text-[10px]">
+                                                In Progress
+                                              </Badge>
+                                            )}
+                                          </div>
+                                          <div>
+                                            <span className="font-medium">Duration:</span>{" "}
+                                            {isCurrentEntry ? (
+                                              <span className="text-primary font-semibold">
+                                                {String(elapsedTime.hours).padStart(2, "0")}h{" "}
+                                                {String(elapsedTime.minutes).padStart(2, "0")}m
+                                              </span>
+                                            ) : (
+                                              `${String(duration.hours).padStart(2, "0")}h ${String(duration.minutes).padStart(2, "0")}m`
+                                            )}
+                                          </div>
+                                          <div>
+                                            <span className="font-medium">Breaks:</span>{" "}
+                                            {entry.breaks && entry.breaks.length > 0 ? (
+                                              <span>{breakMinutesCount}m</span>
+                                            ) : (
+                                              <span>—</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        {entry.breaks && entry.breaks.length > 0 && (
+                                          <div className="pt-2 border-t border-border space-y-1.5">
+                                            {entry.breaks.map((breakPeriod) => {
+                                              const breakDuration = breakPeriod.endTime
+                                                ? calculateDuration(breakPeriod.startTime, breakPeriod.endTime, 0)
+                                                : null
+                                              return (
+                                                <div key={breakPeriod.id} className="flex items-center gap-2 text-xs">
+                                                  <Badge
+                                                    variant="outline"
+                                                    className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)}`}
+                                                  >
+                                                    {getBreakTypeLabel(breakPeriod.type, breakPeriod.title)}
+                                                  </Badge>
+                                                  <span className="text-foreground/70">
+                                                    {formatTime(breakPeriod.startTime)} -{" "}
+                                                    {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                    {breakDuration && (
+                                                      <span className="ml-1 text-foreground/60">
+                                                        ({breakDuration.hours}h {breakDuration.minutes}m)
+                                                      </span>
+                                                    )}
+                                                  </span>
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="min-w-[44px] min-h-[44px]">
+                                            ⋯
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem onClick={() => openNotesDialog(entry)}>
+                                            Edit Notes
+                                          </DropdownMenuItem>
+                                          {isCurrentEntry && (
+                                            <DropdownMenuItem onClick={handleClockOut} className="text-destructive">
+                                              Clock Out
+                                            </DropdownMenuItem>
+                                          )}
+                                          <DropdownMenuItem
+                                            onClick={() => handleDeleteEntry(entry.id)}
+                                            className="text-destructive"
+                                          >
+                                            Delete
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              )
+                            })}
+                          </div>
+                          {/* Desktop Table Layout */}
+                          <div className="hidden sm:block overflow-x-auto w-full">
+                            <Table className="w-full">
                               <TableHeader>
                                 <TableRow className="bg-muted/30">
                                   <TableHead className="text-xs whitespace-nowrap">Task Description</TableHead>
@@ -1833,9 +1996,165 @@ export function TimesheetView() {
                               {weekTotalHours.toFixed(1)}h worked, {weekTotalBreakMinutes}m breaks
                             </span>
                           </div>
-                          <div className="rounded-lg border border-border overflow-hidden">
-                            <div className="overflow-x-auto">
-                              <Table>
+                          <div className="rounded-lg border border-border overflow-hidden w-full max-w-full">
+                            {/* Mobile Card Layout */}
+                            <div className="block sm:hidden space-y-2 p-2 sm:p-3 w-full max-w-full">
+                              {Object.entries(groupEntriesByDate(weekEntries))
+                                .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+                                .map(([date, dateEntries]) => {
+                                  const dayTotal = calculateTotalHours(dateEntries)
+                                  const dayBreaks = calculateTotalBreakMinutes(dateEntries)
+                                  return (
+                                    <div key={date} className="space-y-2">
+                                      <div className="flex items-center justify-between pb-2 border-b border-border">
+                                        <span className="font-semibold text-sm text-foreground">{formatDate(date)}</span>
+                                        <span className="text-xs text-foreground/70">
+                                          {dayTotal.toFixed(1)}h / {dayBreaks}m
+                                        </span>
+                                      </div>
+                                      <div className="space-y-2">
+                                        {dateEntries.map((entry) => {
+                                          const duration = calculateDuration(entry.clockIn, entry.clockOut, entry.breakMinutes)
+                                          const isCurrentEntry = currentEntry?.id === entry.id && !entry.clockOut
+                                          const breakDuration =
+                                            entry.breaks?.reduce(
+                                              (total, b) =>
+                                                total +
+                                                (new Date(b.endTime || Date.now()).getTime() - new Date(b.startTime).getTime()),
+                                              0,
+                                            ) || 0
+                                          const breakMinutesCount = Math.round(breakDuration / (1000 * 60))
+
+                                          return (
+                                            <Card key={entry.id} className={cn("bg-card border-border", isCurrentEntry && "bg-primary/5 border-primary/20")}>
+                                              <CardContent className="p-3 space-y-2">
+                                                <div className="flex items-start justify-between gap-2">
+                                                  <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                      {isCurrentEntry && (
+                                                        <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+                                                      )}
+                                                      <span className="font-semibold text-sm truncate">
+                                                        {entry.title || (
+                                                          <span className="text-foreground/70 italic">No task specified</span>
+                                                        )}
+                                                      </span>
+                                                      {entry.category && (() => {
+                                                        const category = timeCategories.find((c) => c.id === entry.category)
+                                                        return category ? (
+                                                          <Badge
+                                                            variant="outline"
+                                                            className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                                                            style={{
+                                                              borderColor: category.color,
+                                                              color: category.color,
+                                                              backgroundColor: `${category.color}15`,
+                                                            }}
+                                                          >
+                                                            {category.name}
+                                                          </Badge>
+                                                        ) : null
+                                                      })()}
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                                                      <div>
+                                                        <span className="font-medium">In:</span> {formatTime(entry.clockIn)}
+                                                      </div>
+                                                      <div>
+                                                        <span className="font-medium">Out:</span>{" "}
+                                                        {entry.clockOut ? (
+                                                          formatTime(entry.clockOut)
+                                                        ) : (
+                                                          <Badge variant="secondary" className="bg-primary/20 text-primary border-primary/30 text-[10px]">
+                                                            In Progress
+                                                          </Badge>
+                                                        )}
+                                                      </div>
+                                                      <div>
+                                                        <span className="font-medium">Duration:</span>{" "}
+                                                        {isCurrentEntry ? (
+                                                          <span className="text-primary font-semibold">
+                                                            {String(elapsedTime.hours).padStart(2, "0")}h{" "}
+                                                            {String(elapsedTime.minutes).padStart(2, "0")}m
+                                                          </span>
+                                                        ) : (
+                                                          `${String(duration.hours).padStart(2, "0")}h ${String(duration.minutes).padStart(2, "0")}m`
+                                                        )}
+                                                      </div>
+                                                      <div>
+                                                        <span className="font-medium">Breaks:</span>{" "}
+                                                        {entry.breaks && entry.breaks.length > 0 ? (
+                                                          <span>{breakMinutesCount}m</span>
+                                                        ) : (
+                                                          <span>—</span>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                    {entry.breaks && entry.breaks.length > 0 && (
+                                                      <div className="pt-2 border-t border-border space-y-1.5">
+                                                        {entry.breaks.map((breakPeriod) => {
+                                                          const breakDuration = breakPeriod.endTime
+                                                            ? calculateDuration(breakPeriod.startTime, breakPeriod.endTime, 0)
+                                                            : null
+                                                          return (
+                                                            <div key={breakPeriod.id} className="flex items-center gap-2 text-xs">
+                                                              <Badge
+                                                                variant="outline"
+                                                                className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)}`}
+                                                              >
+                                                                {getBreakTypeLabel(breakPeriod.type, breakPeriod.title)}
+                                                              </Badge>
+                                                              <span className="text-foreground/70">
+                                                                {formatTime(breakPeriod.startTime)} -{" "}
+                                                                {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                                {breakDuration && (
+                                                                  <span className="ml-1 text-foreground/60">
+                                                                    ({breakDuration.hours}h {breakDuration.minutes}m)
+                                                                  </span>
+                                                                )}
+                                                              </span>
+                                                            </div>
+                                                          )
+                                                        })}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                  <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                      <Button variant="ghost" size="sm" className="min-w-[44px] min-h-[44px]">
+                                                        ⋯
+                                                      </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                      <DropdownMenuItem onClick={() => openNotesDialog(entry)}>
+                                                        Edit Notes
+                                                      </DropdownMenuItem>
+                                                      {isCurrentEntry && (
+                                                        <DropdownMenuItem onClick={handleClockOut} className="text-destructive">
+                                                          Clock Out
+                                                        </DropdownMenuItem>
+                                                      )}
+                                                      <DropdownMenuItem
+                                                        onClick={() => handleDeleteEntry(entry.id)}
+                                                        className="text-destructive"
+                                                      >
+                                                        Delete
+                                                      </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                  </DropdownMenu>
+                                                </div>
+                                              </CardContent>
+                                            </Card>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                            </div>
+                            {/* Desktop Table Layout */}
+                            <div className="hidden sm:block overflow-x-auto w-full max-w-full">
+                              <Table className="w-full min-w-[600px]">
                                 <TableHeader>
                                   <TableRow className="bg-muted/30">
                                     <TableHead className="text-xs whitespace-nowrap">Date</TableHead>
@@ -2486,13 +2805,12 @@ export function TimesheetView() {
         <Dialog
           open={switchTaskDialogOpen}
           onOpenChange={setSwitchTaskDialogOpen}
-          className="max-w-2xl max-h-[90vh] overflow-y-auto"
         >
-          <DialogContent className="bg-card text-foreground">
+          <DialogContent className="bg-card text-foreground max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Switch to New Task</DialogTitle>
             </DialogHeader>
-            <div className="space-y-6">
+            <div className="space-y-4">
               <p className="text-sm text-foreground/70">
                 Current task "{currentEntry?.title}" will be saved as completed
               </p>
@@ -2783,7 +3101,7 @@ export function TimesheetView() {
         </Dialog>
 
         {workTemplates.length > 0 && (
-          <Card>
+          <Card className="mb-3 sm:mb-4">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />

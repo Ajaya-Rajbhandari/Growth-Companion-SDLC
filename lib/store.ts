@@ -138,6 +138,7 @@ export interface User {
   email: string
   avatar?: string
   createdAt: string
+  officeHours?: number // Maximum office hours per day (default: 9)
 }
 
 export interface ChatSession {
@@ -357,6 +358,7 @@ interface AppState {
   habits: Habit[] // Habits for habit tracking
   habitLogs: HabitLog[] // Habit logs for tracking habit completion
   user: User | null
+  officeHours: number // Maximum office hours per day (default: 9)
   isLoggedIn: boolean
   authInitialized: boolean
   authError: string
@@ -414,6 +416,7 @@ interface AppState {
   setAuthError: (error: string) => void
   setOnboardingStatus: (completed: boolean) => void
   updateUserProfile: (updates: Partial<User>) => Promise<void>
+  setOfficeHours: (hours: number) => void
   setOnboardingStep: (step: number) => void
   completeOnboarding: () => Promise<void>
   skipOnboarding: () => Promise<void>
@@ -433,6 +436,9 @@ interface AppState {
   logHabit: (habitId: string, date: string, count?: number, notes?: string) => Promise<void>
   getHabitStreak: (habitId: string) => number
   getHabitStats: (habitId: string) => { totalDays: number; completedDays: number; currentStreak: number; longestStreak: number }
+  addTimeCategory: (category: Omit<TimeCategory, "id" | "createdAt">) => Promise<void>
+  updateTimeCategory: (id: string, updates: Partial<TimeCategory>) => Promise<void>
+  deleteTimeCategory: (id: string) => Promise<void>
 }
 
 export const useAppStore = create<AppState>()(
@@ -496,6 +502,7 @@ export const useAppStore = create<AppState>()(
       habits: [], // Initialize habits
       habitLogs: [], // Initialize habit logs
       user: null,
+      officeHours: 9, // Default office hours per day
       isLoggedIn: false,
       authInitialized: false,
       authError: "",
@@ -683,12 +690,47 @@ export const useAppStore = create<AppState>()(
       setIsChatOpen: (open) => set({ isChatOpen: open }),
       clearChatHistory: () => set({ chatMessages: [] }),
       clockIn: async (title?: string, category?: string) => {
-        const { user } = get()
+        const { user, currentEntry, timeEntries, officeHours } = get()
         if (!user) return
+
+        // Validation 1: Check if there's an active session
+        if (currentEntry) {
+          throw new Error("You already have an active work session. Please clock out first.")
+        }
+
+        // Validation 2: Check if user has already clocked in today (even if clocked out)
+        // Check both in-memory state AND database to ensure accuracy
+        const todayStr = new Date().toISOString().split("T")[0]
+        const todayEntries = timeEntries.filter((e) => e.date === todayStr)
+        
+        // Also check database directly to avoid race conditions
+        const { data: dbTodayEntries } = await supabase
+          .from("time_entries")
+          .select("id, date")
+          .eq("user_id", user.id)
+          .eq("date", todayStr)
+        
+        const hasTodayEntry = (todayEntries.length > 0) || (dbTodayEntries && dbTodayEntries.length > 0)
+        if (hasTodayEntry) {
+          throw new Error("You can only clock in once per day. You have already clocked in today.")
+        }
+
+        // Validation 3: Check office hours limit (calculate today's hours)
+        let todayHours = todayEntries.reduce((total, entry) => {
+          if (entry.clockOut) {
+            const start = new Date(entry.clockIn).getTime()
+            const end = new Date(entry.clockOut).getTime()
+            const diffMs = Math.max(0, end - start - entry.breakMinutes * 60 * 1000)
+            return total + diffMs / (1000 * 60 * 60)
+          }
+          return total
+        }, 0)
+        // Note: We don't check office hours limit here because user can only clock in once per day
+        // The limit will be enforced when they try to work beyond office hours (can be added as a warning)
 
         const now = new Date()
         const entry = {
-          date: now.toISOString().split("T")[0],
+          date: todayStr,
           clock_in: now.toISOString(),
           break_minutes: 0,
           breaks: [] as BreakPeriod[],
@@ -1286,7 +1328,12 @@ export const useAppStore = create<AppState>()(
           user: state.user ? { ...state.user, ...updates } : null,
         }))
       },
-
+      setOfficeHours: (hours: number) => {
+        if (hours < 1 || hours > 24) {
+          throw new Error("Office hours must be between 1 and 24 hours")
+        }
+        set({ officeHours: hours })
+      },
       setOnboardingStep: (step: number) => {
         set({ currentOnboardingStep: step })
       },
@@ -1698,6 +1745,72 @@ export const useAppStore = create<AppState>()(
           currentStreak,
           longestStreak,
         }
+      },
+
+      addTimeCategory: async (category: Omit<TimeCategory, "id" | "createdAt">) => {
+        const { user } = get()
+        if (!user) throw new Error("Must be logged in to add time category")
+
+        const { data, error } = await supabase
+          .from("time_categories")
+          .insert({
+            name: category.name,
+            color: category.color,
+            icon: category.icon || null,
+            user_id: user.id,
+          })
+          .select()
+          .single()
+
+        if (error) throwSupabaseError(error, "Failed to add time category")
+        if (data) {
+          const newCategory = mapTimeCategoryFromDb(data as DbTimeCategory)
+          set((state) => ({
+            timeCategories: [newCategory, ...state.timeCategories],
+          }))
+        }
+      },
+
+      updateTimeCategory: async (id: string, updates: Partial<TimeCategory>) => {
+        const { user } = get()
+        if (!user) throw new Error("Must be logged in to update time category")
+
+        const updateData: any = {}
+        if (updates.name !== undefined) updateData.name = updates.name
+        if (updates.color !== undefined) updateData.color = updates.color
+        if (updates.icon !== undefined) updateData.icon = updates.icon || null
+
+        const { data, error } = await supabase
+          .from("time_categories")
+          .update(updateData)
+          .eq("id", id)
+          .eq("user_id", user.id)
+          .select()
+          .single()
+
+        if (error) throwSupabaseError(error, "Failed to update time category")
+        if (data) {
+          const updatedCategory = mapTimeCategoryFromDb(data as DbTimeCategory)
+          set((state) => ({
+            timeCategories: state.timeCategories.map((c) => (c.id === id ? updatedCategory : c)),
+          }))
+        }
+      },
+
+      deleteTimeCategory: async (id: string) => {
+        const { user } = get()
+        if (!user) throw new Error("Must be logged in to delete time category")
+
+        const { error } = await supabase
+          .from("time_categories")
+          .delete()
+          .eq("id", id)
+          .eq("user_id", user.id)
+
+        if (error) throwSupabaseError(error, "Failed to delete time category")
+        set((state) => ({
+          timeCategories: state.timeCategories.filter((c) => c.id !== id),
+        }))
       },
     }),
     {

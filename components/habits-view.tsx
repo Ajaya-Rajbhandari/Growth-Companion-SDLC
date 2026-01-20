@@ -142,10 +142,10 @@ export function HabitsView() {
   const avgStreak = habits.length > 0 ? Math.round(totalStreaks / habits.length) : 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Habits</h2>
+          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight">Habits</h2>
           <p className="text-muted-foreground">Track your daily routines and build consistency</p>
         </div>
         <Dialog open={showAddHabitDialog} onOpenChange={setShowAddHabitDialog}>

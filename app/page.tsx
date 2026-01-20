@@ -2,6 +2,7 @@
 
 import { Sidebar } from "@/components/sidebar"
 import { MobileHeader } from "@/components/mobile-header"
+import { MobileBottomNav } from "@/components/mobile-bottom-nav"
 import { DashboardView } from "@/components/dashboard-view"
 import { TasksView } from "@/components/tasks-view"
 import { NotesView } from "@/components/notes-view"
@@ -38,18 +39,20 @@ export default function Home() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen bg-background overflow-x-hidden max-w-full">
       {/* Desktop Navigation Sidebar - Now the only sidebar */}
       <div className="hidden lg:block">
         <Sidebar />
       </div>
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col lg:ml-64 min-h-0 overflow-hidden">
         {/* Mobile Header */}
-        <MobileHeader />
+        <div className="lg:hidden">
+          <MobileHeader />
+        </div>
 
         {/* Main Content - Now has full width without chat sidebar */}
-        <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
+        <main className="flex-1 p-2 sm:p-3 md:p-4 lg:p-5 overflow-x-hidden overflow-y-auto pb-36 lg:pb-8 w-full max-w-full [&>*]:max-w-full min-h-0">
           {activeView === "dashboard" && <DashboardView />}
           {activeView === "tasks" && <TasksView />}
           {activeView === "notes" && <NotesView />}
@@ -60,6 +63,9 @@ export default function Home() {
           {activeView === "profile" && <ProfileView />}
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation */}
+      <MobileBottomNav />
 
       <FloatingAssistant />
       <OnboardingModal />

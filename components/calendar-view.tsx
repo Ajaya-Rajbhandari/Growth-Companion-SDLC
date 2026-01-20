@@ -327,15 +327,15 @@ export function CalendarView() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Calendar</h2>
-          <p className="text-muted-foreground">View and manage your tasks, time entries, goals, and habits</p>
+          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight">Calendar</h2>
+          <p className="text-xs sm:text-sm text-muted-foreground">View and manage your tasks, time entries, goals, and habits</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <Select value={eventFilter} onValueChange={(v) => setEventFilter(v as typeof eventFilter)}>
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger className="w-full sm:w-[140px] h-12 sm:h-10">
               <Filter className="mr-2 h-4 w-4" />
               <SelectValue />
             </SelectTrigger>
@@ -348,7 +348,7 @@ export function CalendarView() {
             </SelectContent>
           </Select>
           <Select value={viewMode} onValueChange={(v) => setViewMode(v as typeof viewMode)}>
-            <SelectTrigger className="w-[120px]">
+            <SelectTrigger className="w-full sm:w-[120px] h-12 sm:h-10">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -359,7 +359,7 @@ export function CalendarView() {
           </Select>
           <Dialog open={showAddEventDialog} onOpenChange={setShowAddEventDialog}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="w-full sm:w-auto min-h-[44px] sm:min-h-0">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Event
               </Button>
@@ -423,22 +423,22 @@ export function CalendarView() {
       </div>
 
       {viewMode === "month" && (
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card className="flex flex-col">
-            <CardHeader className="flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarIcon className="h-5 w-5" />
+        <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
+          <Card className="flex flex-col w-full">
+            <CardHeader className="flex-shrink-0 p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                   {format(currentMonth, "MMMM yyyy")}
                 </CardTitle>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => navigateMonth("prev")}>
+                  <Button variant="ghost" size="sm" onClick={() => navigateMonth("prev")} className="min-h-[44px] sm:min-h-0">
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setCurrentMonth(new Date())}>
+                  <Button variant="ghost" size="sm" onClick={() => setCurrentMonth(new Date())} className="min-h-[44px] sm:min-h-0">
                     Today
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => navigateMonth("next")}>
+                  <Button variant="ghost" size="sm" onClick={() => navigateMonth("next")} className="min-h-[44px] sm:min-h-0">
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -489,19 +489,19 @@ export function CalendarView() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{format(selectedDate, "EEEE, MMMM d, yyyy")}</CardTitle>
+          <Card className="w-full">
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">{format(selectedDate, "EEEE, MMMM d, yyyy")}</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 sm:p-6 pt-0">
               {selectedDateEvents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <CalendarIcon className="mb-2 h-12 w-12 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">No events scheduled for this date</p>
+                <div className="flex flex-col items-center justify-center py-8 sm:py-12 text-center">
+                  <CalendarIcon className="mb-2 h-8 w-8 sm:h-12 sm:w-12 text-muted-foreground" />
+                  <p className="text-xs sm:text-sm text-muted-foreground">No events scheduled for this date</p>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="mt-4"
+                    className="mt-4 min-h-[44px] sm:min-h-0"
                     onClick={() => {
                       setNewEventDate(format(selectedDate, "yyyy-MM-dd"))
                       setShowAddEventDialog(true)
@@ -518,7 +518,7 @@ export function CalendarView() {
                       key={event.id}
                       onClick={() => handleEventClick(event)}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors hover:bg-accent",
+                        "flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors hover:bg-accent min-h-[44px]",
                         event.type === "task" && priorityColors[event.priority || "low"],
                         event.type === "time_entry" && "bg-green-500/10 border-green-500/50 hover:bg-green-500/20",
                         event.type === "goal" && "bg-purple-500/10 border-purple-500/50 hover:bg-purple-500/20",
@@ -593,27 +593,27 @@ export function CalendarView() {
       )}
 
       {viewMode === "week" && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>
+        <Card className="w-full">
+          <CardHeader className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <CardTitle className="text-base sm:text-lg">
                 {format(weekStart, "MMM d")} - {format(endOfWeek(weekStart), "MMM d, yyyy")}
               </CardTitle>
               <div className="flex gap-1">
-                <Button variant="ghost" size="sm" onClick={() => navigateWeek("prev")}>
+                <Button variant="ghost" size="sm" onClick={() => navigateWeek("prev")} className="min-h-[44px] sm:min-h-0">
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedDate(new Date())}>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedDate(new Date())} className="min-h-[44px] sm:min-h-0">
                   Today
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => navigateWeek("next")}>
+                <Button variant="ghost" size="sm" onClick={() => navigateWeek("next")} className="min-h-[44px] sm:min-h-0">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-7 gap-2">
+          <CardContent className="p-4 sm:p-6 pt-0 overflow-x-auto">
+            <div className="grid grid-cols-7 gap-2 min-w-[600px] sm:min-w-0">
               {weekDays.map((day) => {
                 const dayEvents = getEventsForDate(day)
                 const isSelected = isSameDay(day, selectedDate)
@@ -623,13 +623,13 @@ export function CalendarView() {
                   <div
                     key={day.toISOString()}
                     className={cn(
-                      "min-h-[120px] rounded-lg border p-2",
+                      "min-h-[100px] sm:min-h-[120px] rounded-lg border p-2",
                       isSelected && "ring-2 ring-primary",
                       isToday && "bg-accent/50"
                     )}
                   >
                     <div className={cn(
-                      "text-sm font-medium mb-2",
+                      "text-xs sm:text-sm font-medium mb-2",
                       isToday && "text-primary font-bold"
                     )}>
                       {format(day, "EEE d")}
@@ -643,7 +643,7 @@ export function CalendarView() {
                             handleEventClick(event)
                           }}
                           className={cn(
-                            "text-xs p-1.5 rounded cursor-pointer truncate",
+                            "text-[10px] sm:text-xs p-1 sm:p-1.5 rounded cursor-pointer truncate min-h-[44px] sm:min-h-0",
                             event.type === "task" && "bg-blue-500/20 text-blue-700 dark:text-blue-400",
                             event.type === "time_entry" && "bg-green-500/20 text-green-700 dark:text-green-400",
                             event.type === "goal" && "bg-purple-500/20 text-purple-700 dark:text-purple-400",
@@ -654,7 +654,7 @@ export function CalendarView() {
                         </div>
                       ))}
                       {dayEvents.length > 3 && (
-                        <div className="text-xs text-muted-foreground px-1.5">
+                        <div className="text-[10px] sm:text-xs text-muted-foreground px-1 sm:px-1.5">
                           +{dayEvents.length - 3} more
                         </div>
                       )}
@@ -668,32 +668,32 @@ export function CalendarView() {
       )}
 
       {viewMode === "day" && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>{format(selectedDate, "EEEE, MMMM d, yyyy")}</CardTitle>
+        <Card className="w-full">
+          <CardHeader className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <CardTitle className="text-base sm:text-lg">{format(selectedDate, "EEEE, MMMM d, yyyy")}</CardTitle>
               <div className="flex gap-1">
-                <Button variant="ghost" size="sm" onClick={() => navigateDay("prev")}>
+                <Button variant="ghost" size="sm" onClick={() => navigateDay("prev")} className="min-h-[44px] sm:min-h-0">
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedDate(new Date())}>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedDate(new Date())} className="min-h-[44px] sm:min-h-0">
                   Today
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => navigateDay("next")}>
+                <Button variant="ghost" size="sm" onClick={() => navigateDay("next")} className="min-h-[44px] sm:min-h-0">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 sm:p-6 pt-0">
             {selectedDateEvents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <CalendarIcon className="mb-2 h-12 w-12 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No events scheduled for this day</p>
+              <div className="flex flex-col items-center justify-center py-8 sm:py-12 text-center">
+                <CalendarIcon className="mb-2 h-8 w-8 sm:h-12 sm:w-12 text-muted-foreground" />
+                <p className="text-xs sm:text-sm text-muted-foreground">No events scheduled for this day</p>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="mt-4"
+                  className="mt-4 min-h-[44px] sm:min-h-0"
                   onClick={() => {
                     setNewEventDate(format(selectedDate, "yyyy-MM-dd"))
                     setShowAddEventDialog(true)
@@ -704,7 +704,7 @@ export function CalendarView() {
                 </Button>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {selectedDateEvents
                   .sort((a, b) => {
                     if (a.time && b.time) {
@@ -717,7 +717,7 @@ export function CalendarView() {
                       key={event.id}
                       onClick={() => handleEventClick(event)}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg border p-4 cursor-pointer transition-colors hover:bg-accent",
+                        "flex items-center gap-3 rounded-lg border p-3 sm:p-4 cursor-pointer transition-colors hover:bg-accent min-h-[44px]",
                         event.type === "task" && priorityColors[event.priority || "low"],
                         event.type === "time_entry" && "bg-green-500/10 border-green-500/50 hover:bg-green-500/20",
                         event.type === "goal" && "bg-purple-500/10 border-purple-500/50 hover:bg-purple-500/20",

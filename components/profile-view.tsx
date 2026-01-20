@@ -9,13 +9,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useRouter } from "next/navigation"
 import { Edit3, LogOut, User, Mail, Calendar } from "lucide-react"
 import { useState } from "react"
+import { SeedTestDataButton } from "./seed-test-data-button"
 
 export function ProfileView() {
-  const { user, logout, updateUserProfile } = useAppStore(
+  const { user, logout, updateUserProfile, officeHours, setOfficeHours } = useAppStore(
     useShallow((state) => ({
       user: state.user,
       logout: state.logout,
       updateUserProfile: state.updateUserProfile,
+      officeHours: state.officeHours,
+      setOfficeHours: state.setOfficeHours,
     })),
   )
   const router = useRouter()
@@ -23,6 +26,9 @@ export function ProfileView() {
   const [editName, setEditName] = useState(user?.name || "")
   const [saveError, setSaveError] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [editOfficeHours, setEditOfficeHours] = useState(officeHours.toString())
+  const [isEditingHours, setIsEditingHours] = useState(false)
+  const [hoursError, setHoursError] = useState("")
 
   const handleLogout = () => {
     logout()
@@ -41,6 +47,20 @@ export function ProfileView() {
       setSaveError(error instanceof Error ? error.message : "Failed to update profile.")
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleUpdateOfficeHours = () => {
+    const hours = Number.parseInt(editOfficeHours, 10)
+    setHoursError("")
+    try {
+      if (isNaN(hours) || hours < 1 || hours > 24) {
+        throw new Error("Office hours must be between 1 and 24 hours")
+      }
+      setOfficeHours(hours)
+      setIsEditingHours(false)
+    } catch (error) {
+      setHoursError(error instanceof Error ? error.message : "Invalid office hours")
     }
   }
 
@@ -135,6 +155,73 @@ export function ProfileView() {
           </div>
         </CardContent>
       </Card>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <Calendar className="size-5" />
+            Office Hours
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Maximum Hours Per Day</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Set the maximum number of work hours allowed per day (1-24 hours)
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {isEditingHours ? (
+                <>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="24"
+                    value={editOfficeHours}
+                    onChange={(e) => setEditOfficeHours(e.target.value)}
+                    className="w-20 bg-input border-border"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleUpdateOfficeHours}
+                    className="bg-primary text-primary-foreground"
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditOfficeHours(officeHours.toString())
+                      setIsEditingHours(false)
+                      setHoursError("")
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span className="text-lg font-semibold text-foreground">{officeHours} hours</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingHours(true)}
+                    className="border-border bg-transparent"
+                  >
+                    <Edit3 className="size-3 mr-1" />
+                    Edit
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+          {hoursError && <p className="text-xs text-destructive">{hoursError}</p>}
+        </CardContent>
+      </Card>
+
+      <SeedTestDataButton />
 
       <Card className="bg-card border-border">
         <CardHeader>

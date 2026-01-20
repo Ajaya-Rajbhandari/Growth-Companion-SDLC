@@ -8,7 +8,8 @@
     "lint": "eslint .",
     "start": "next start",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "seed": "tsx scripts/seed-test-data.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "3.0.10",
@@ -80,6 +81,7 @@
     "@types/react-dom": "^19",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
+    "tsx": "^4.19.2",
     "typescript": "^5",
     "vitest": "^2.1.9"
   }
