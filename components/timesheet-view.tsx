@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { BreakModePanel } from "./break-mode-panel" // Import the new component
@@ -369,7 +370,7 @@ export function TimesheetView() {
   const [selectedDate, setSelectedDate] = useState(new Date())
 
   const [workTitle, setWorkTitle] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState<string>("")
+  const [selectedCategory, setSelectedCategory] = useState<string>("none")
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const [showCategoryManagement, setShowCategoryManagement] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
@@ -574,7 +575,7 @@ export function TimesheetView() {
   // Handle clockIn with workTitle and save template
   const handleClockIn = () => {
     const title = workTitle.trim()
-    const category = selectedCategory || undefined
+    const category = selectedCategory && selectedCategory !== "none" ? selectedCategory : undefined
     if (title) {
       clockIn(title, category)
         .then(() => {
@@ -590,7 +591,7 @@ export function TimesheetView() {
           })
         })
       setWorkTitle("")
-      setSelectedCategory("")
+      setSelectedCategory("none")
       return
     }
     clockIn(undefined, category)
@@ -606,7 +607,7 @@ export function TimesheetView() {
           description: error instanceof Error ? error.message : "Unable to start session.",
         })
       })
-    setSelectedCategory("")
+    setSelectedCategory("none")
   }
 
   // Break type selection and management
@@ -1226,7 +1227,7 @@ export function TimesheetView() {
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
                     {timeCategories.map((cat) => (
                       <SelectItem key={cat.id} value={cat.id}>
                         <div className="flex items-center gap-2">

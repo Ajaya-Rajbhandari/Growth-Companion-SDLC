@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useMemo } from "react"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,87 +22,118 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { cn } from "@/lib/utils"
 
 export function DashboardView() {
-  const { tasks, notes, currentEntry, timeEntries, user } = useAppStore(
+  const { tasks, notes, currentEntry, timeEntries, user, fetchInitialData, activeView } = useAppStore(
     useShallow((state) => ({
       tasks: state.tasks,
       notes: state.notes,
       currentEntry: state.currentEntry,
       timeEntries: state.timeEntries,
       user: state.user,
+      fetchInitialData: state.fetchInitialData,
+      activeView: state.activeView,
     })),
   )
 
-  const completedTasks = tasks.filter((t) => t.completed).length
-  const pendingTasks = tasks.filter((t) => !t.completed).length
-  const highPriorityTasks = tasks.filter((t) => t.priority === "high" && !t.completed)
+  // Refresh data when dashboard view becomes active (only if no data exists)
+  const hasData = timeEntries.length > 0 || tasks.length > 0
+  useEffect(() => {
+    if (activeView === "dashboard" && user && !hasData) {
+      // Only fetch if we don't have data yet
+      fetchInitialData()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, user?.id, hasData])
 
-  const today = new Date().toISOString().split("T")[0]
-  const todayEntries = timeEntries.filter((entry) => entry.date === today)
-  const todayHours = todayEntries.reduce((total, entry) => {
-    const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
-    const start = new Date(entry.clockIn).getTime()
-    const diffMs = end - start - entry.breakMinutes * 60 * 1000
-    return total + diffMs / (1000 * 60 * 60)
-  }, 0)
+  const completedTasks = useMemo(() => tasks.filter((t) => t.completed).length, [tasks])
+  const pendingTasks = useMemo(() => tasks.filter((t) => !t.completed).length, [tasks])
+  const highPriorityTasks = useMemo(() => tasks.filter((t) => t.priority === "high" && !t.completed), [tasks])
 
-  let todayHoursWithCurrent = todayHours
-  if (currentEntry && currentEntry.date === today && !currentEntry.clockOut) {
-    const start = new Date(currentEntry.clockIn).getTime()
-    const now = Date.now()
-    const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
-    const diffMs = Math.max(0, now - start - breakMs)
-    const currentSessionHours = diffMs / (1000 * 60 * 60)
-    todayHoursWithCurrent += currentSessionHours
-  }
-
-  const completionRate = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0
-
-  // Calculate weekly stats
-  const weekStart = new Date()
-  const dayOfWeek = weekStart.getDay()
-  weekStart.setDate(weekStart.getDate() - dayOfWeek)
-  weekStart.setHours(0, 0, 0, 0)
-
-  const weekEntries = timeEntries.filter((e) => new Date(e.date) >= weekStart)
-  const weeklyHours = weekEntries.reduce((total, entry) => {
-    const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
-    const start = new Date(entry.clockIn).getTime()
-    const diffMs = Math.max(0, end - start - entry.breakMinutes * 60 * 1000)
-    return total + diffMs / (1000 * 60 * 60)
-  }, 0)
-
-  if (currentEntry && currentEntry.date === today && !currentEntry.clockOut) {
-    const start = new Date(currentEntry.clockIn).getTime()
-    const now = Date.now()
-    const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
-    const diffMs = Math.max(0, now - start - breakMs)
-  }
-
-  // Daily breakdown
-  const last7Days = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date()
-    date.setDate(date.getDate() - (6 - i))
-    return date.toISOString().split("T")[0]
-  })
-
-  const dailyHours = last7Days.map((date) => {
-    const dayEntries = timeEntries.filter((e) => e.date === date)
-    return dayEntries.reduce((total, entry) => {
+  const today = useMemo(() => new Date().toISOString().split("T")[0], [])
+  const todayEntries = useMemo(() => timeEntries.filter((entry) => entry.date === today), [timeEntries, today])
+  const todayHours = useMemo(() => {
+    return todayEntries.reduce((total, entry) => {
       const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
       const start = new Date(entry.clockIn).getTime()
-      const diffMs = Math.max(0, end - start - entry.breakMinutes * 60 * 1000)
+      const diffMs = end - start - (entry.breakMinutes || 0) * 60 * 1000
       return total + diffMs / (1000 * 60 * 60)
     }, 0)
-  })
+  }, [todayEntries])
 
-  const avgDailyHours =
-    dailyHours.length > 0 ? (dailyHours.reduce((a, b) => a + b, 0) / dailyHours.length).toFixed(1) : "0"
-  const maxDailyHours = dailyHours.length > 0 ? Math.max(...dailyHours).toFixed(1) : "0"
+  const todayHoursWithCurrent = useMemo(() => {
+    let hours = todayHours
+    if (currentEntry && currentEntry.date === today && !currentEntry.clockOut) {
+      const start = new Date(currentEntry.clockIn).getTime()
+      const now = Date.now()
+      const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
+      const diffMs = Math.max(0, now - start - breakMs)
+      const currentSessionHours = diffMs / (1000 * 60 * 60)
+      hours += currentSessionHours
+    }
+    return hours
+  }, [todayHours, currentEntry, today])
 
-  const dailyChartData = last7Days.map((date, index) => ({
-    dateLabel: new Date(date).toLocaleDateString("en-US", { weekday: "short" }),
-    hours: Number(dailyHours[index].toFixed(2)),
-  }))
+  const completionRate = useMemo(() => {
+    return tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0
+  }, [tasks.length, completedTasks])
+
+  // Calculate weekly stats
+  const { weekStart, weekEntries, weeklyHours } = useMemo(() => {
+    const start = new Date()
+    const dayOfWeek = start.getDay()
+    start.setDate(start.getDate() - dayOfWeek)
+    start.setHours(0, 0, 0, 0)
+
+    const entries = timeEntries.filter((e) => {
+      const entryDate = new Date(e.date)
+      entryDate.setHours(0, 0, 0, 0)
+      return entryDate >= start
+    })
+    
+    const hours = entries.reduce((total, entry) => {
+      const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
+      const start = new Date(entry.clockIn).getTime()
+      const diffMs = Math.max(0, end - start - (entry.breakMinutes || 0) * 60 * 1000)
+      return total + diffMs / (1000 * 60 * 60)
+    }, 0)
+
+    return { weekStart: start, weekEntries: entries, weeklyHours: hours }
+  }, [timeEntries])
+
+  // Daily breakdown
+  const { last7Days, dailyHours } = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const date = new Date()
+      date.setDate(date.getDate() - (6 - i))
+      date.setHours(0, 0, 0, 0)
+      return date.toISOString().split("T")[0]
+    })
+
+    const hours = days.map((date) => {
+      const dayEntries = timeEntries.filter((e) => {
+        const entryDate = new Date(e.date)
+        entryDate.setHours(0, 0, 0, 0)
+        return entryDate.toISOString().split("T")[0] === date
+      })
+      return dayEntries.reduce((total, entry) => {
+        const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
+        const start = new Date(entry.clockIn).getTime()
+        const diffMs = Math.max(0, end - start - (entry.breakMinutes || 0) * 60 * 1000)
+        return total + diffMs / (1000 * 60 * 60)
+      }, 0)
+    })
+
+    return { last7Days: days, dailyHours: hours }
+  }, [timeEntries])
+
+  const { avgDailyHours, maxDailyHours, dailyChartData } = useMemo(() => {
+    const avg = dailyHours.length > 0 ? (dailyHours.reduce((a, b) => a + b, 0) / dailyHours.length).toFixed(1) : "0"
+    const max = dailyHours.length > 0 ? Math.max(...dailyHours).toFixed(1) : "0"
+    const chartData = last7Days.map((date, index) => ({
+      dateLabel: new Date(date).toLocaleDateString("en-US", { weekday: "short" }),
+      hours: Number(dailyHours[index].toFixed(2)),
+    }))
+    return { avgDailyHours: avg, maxDailyHours: max, dailyChartData: chartData }
+  }, [dailyHours, last7Days])
 
   const hasOverdueTasks = highPriorityTasks.length > 0
 
@@ -247,22 +279,35 @@ export function DashboardView() {
             config={{
               hours: {
                 label: "Hours",
-                color: "hsl(var(--chart-2))",
+                theme: {
+                  light: "#3b82f6", // Bright blue for light mode
+                  dark: "#60a5fa", // Bright blue for dark mode
+                },
               },
             }}
             className="h-[220px] w-full"
           >
             <AreaChart data={dailyChartData} margin={{ left: 8, right: 8 }}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="dateLabel" tickLine={false} axisLine={false} />
+              <CartesianGrid 
+                vertical={false} 
+                strokeDasharray="3 3" 
+                stroke="hsl(var(--border))"
+                opacity={0.3}
+              />
+              <XAxis 
+                dataKey="dateLabel" 
+                tickLine={false} 
+                axisLine={false}
+                tick={{ fill: "hsl(var(--muted-foreground))" }}
+              />
               <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
               <Area
                 type="monotone"
                 dataKey="hours"
                 stroke="var(--color-hours)"
                 fill="var(--color-hours)"
-                fillOpacity={0.2}
-                strokeWidth={2}
+                fillOpacity={0.6}
+                strokeWidth={3}
               />
             </AreaChart>
           </ChartContainer>
