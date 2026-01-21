@@ -6,6 +6,8 @@ import { AuthProvider } from "@/components/auth-provider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { ErrorHandler } from "@/components/error-handler"
+import { PWAInstallPrompt } from "@/components/pwa-install-prompt"
+import { PWARegister } from "@/components/pwa-register"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -15,6 +17,7 @@ export const metadata: Metadata = {
   title: "Companion - Personal Assistant",
   description: "Your personal assistant for task management and note-taking",
   generator: "v0.app",
+  manifest: "/manifest.json",
   icons: {
     icon: [
       {
@@ -35,6 +38,10 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
+    title: "Companion",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
   },
 }
 
@@ -60,9 +67,11 @@ export default function RootLayout({
         <ErrorHandler />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <AuthProvider>
+            <PWARegister />
             {children}
             <Analytics />
             <Toaster />
+            <PWAInstallPrompt />
           </AuthProvider>
         </ThemeProvider>
       </body>

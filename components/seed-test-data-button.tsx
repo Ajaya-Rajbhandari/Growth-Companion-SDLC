@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { format, subDays, addDays } from "date-fns"
 import { toast } from "@/components/ui/use-toast"
-import { Loader2 } from "lucide-react"
+import { Loader2, Trash2 } from "lucide-react"
 
 export function SeedTestDataButton() {
   const { user } = useAppStore(
@@ -17,6 +17,7 @@ export function SeedTestDataButton() {
   )
 
   const [isSeeding, setIsSeeding] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [progress, setProgress] = useState("")
 
   const seedTestData = async () => {
@@ -349,7 +350,142 @@ export function SeedTestDataButton() {
     }
   }
 
-  if (!user) {
+  const removeTestData = async () => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "Please log in first",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!confirm("⚠️ WARNING: This will DELETE ALL your data (tasks, notes, time entries, goals, habits, etc.). This action cannot be undone. Are you absolutely sure?")) {
+      return
+    }
+
+    if (!confirm("This is your final warning. All data will be permanently deleted. Continue?")) {
+      return
+    }
+
+    setIsDeleting(true)
+    setProgress("Starting deletion...")
+
+    try {
+      const userId = user.id
+      const summary: Record<string, number> = {}
+
+      // Delete in reverse order of dependencies
+      // 1. Delete Habit Logs
+      setProgress("Deleting habit logs...")
+      const { data: habitLogsData } = await supabase
+        .from('habit_logs')
+        .delete()
+        .eq('user_id', userId)
+        .select()
+      summary.habitLogs = habitLogsData?.length || 0
+
+      // 2. Delete Habits
+      setProgress("Deleting habits...")
+      const { data: habitsData } = await supabase
+        .from('habits')
+        .delete()
+        .eq('user_id', userId)
+        .select()
+      summary.habits = habitsData?.length || 0
+
+      // 3. Delete Goals
+      setProgress("Deleting goals...")
+      const { data: goalsData } = await supabase
+        .from('goals')
+        .delete()
+        .eq('user_id', userId)
+        .select()
+      summary.goals = goalsData?.length || 0
+
+      // 4. Delete Time Entries
+      setProgress("Deleting time entries...")
+      const { data: timeEntriesData } = await supabase
+        .from('time_entries')
+        .delete()
+        .eq('user_id', userId)
+        .select()
+      summary.timeEntries = timeEntriesData?.length || 0
+
+      // 5. Delete Notes
+      setProgress("Deleting notes...")
+      const { data: notesData } = await supabase
+        .from('notes')
+        .delete()
+        .eq('user_id', userId)
+        .select()
+      summary.notes = notesData?.length || 0
+
+      // 6. Delete Tasks
+      setProgress("Deleting tasks...")
+      const { data: tasksData } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('user_id', userId)
+        .select()
+      summary.tasks = tasksData?.length || 0
+
+      // 7. Delete Time Categories
+      setProgress("Deleting time categories...")
+      const { data: categoriesData } = await supabase
+        .from('time_categories')
+        .delete()
+        .eq('user_id', userId)
+        .select()
+      summary.categories = categoriesData?.length || 0
+
+      // 8. Delete Work Templates
+      setProgress("Deleting work templates...")
+      const { data: templatesData } = await supabase
+        .from('work_templates')
+        .delete()
+        .eq('user_id', userId)
+        .select()
+      summary.templates = templatesData?.length || 0
+
+      // 9. Delete Chat Sessions
+      setProgress("Deleting chat sessions...")
+      const { data: chatSessionsData } = await supabase
+        .from('chat_sessions')
+        .delete()
+        .eq('user_id', userId)
+        .select()
+      summary.chatSessions = chatSessionsData?.length || 0
+
+      setProgress("Complete!")
+
+      toast({
+        title: "🗑️ Test data removed successfully!",
+        description: `Deleted: ${summary.tasks} tasks, ${summary.notes} notes, ${summary.timeEntries} time entries, ${summary.goals} goals, ${summary.habits} habits, ${summary.habitLogs} habit logs, ${summary.categories} categories, ${summary.templates} templates, ${summary.chatSessions} chat sessions`,
+      })
+
+      // Refresh the app data
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
+
+    } catch (error) {
+      console.error('Deletion error:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to remove test data",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(false)
+      setProgress("")
+    }
+  }
+
+  // Only show in development mode
+  const isDevelopment = process.env.NODE_ENV === 'development'
+
+  if (!user || !isDevelopment) {
     return null
   }
 
@@ -359,21 +495,41 @@ export function SeedTestDataButton() {
       <p className="text-xs text-muted-foreground mb-4">
         Generate comprehensive test data: 500 tasks, 300 notes, 200 days of time entries, goals, habits, and more.
       </p>
-      <Button
-        onClick={seedTestData}
-        disabled={isSeeding}
-        variant="outline"
-        className="w-full"
-      >
-        {isSeeding ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            {progress || "Seeding..."}
-          </>
-        ) : (
-          "🌱 Seed Test Data"
-        )}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          onClick={seedTestData}
+          disabled={isSeeding || isDeleting}
+          variant="outline"
+          className="flex-1"
+        >
+          {isSeeding ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              {progress || "Seeding..."}
+            </>
+          ) : (
+            "🌱 Seed Test Data"
+          )}
+        </Button>
+        <Button
+          onClick={removeTestData}
+          disabled={isSeeding || isDeleting}
+          variant="destructive"
+          className="flex-1"
+        >
+          {isDeleting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              {progress || "Deleting..."}
+            </>
+          ) : (
+            <>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Remove All Data
+            </>
+          )}
+        </Button>
+      </div>
       {progress && (
         <p className="text-xs text-muted-foreground mt-2">{progress}</p>
       )}

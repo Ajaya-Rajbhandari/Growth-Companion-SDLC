@@ -51,6 +51,7 @@ export function DashboardView() {
     clockOut,
     setActiveView,
     officeHours,
+    getTodayWorkStats,
   } = useAppStore(
     useShallow((state) => ({
       tasks: state.tasks,
@@ -67,6 +68,7 @@ export function DashboardView() {
       clockOut: state.clockOut,
       setActiveView: state.setActiveView,
       officeHours: state.officeHours,
+      getTodayWorkStats: state.getTodayWorkStats,
     })),
   )
 
@@ -126,6 +128,8 @@ export function DashboardView() {
   const completionRate = useMemo(() => {
     return tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0
   }, [tasks.length, completedTasks])
+
+  const workStats = useMemo(() => getTodayWorkStats(), [timeEntries, currentEntry, getTodayWorkStats])
 
   // Calculate weekly stats
   const { weekStart, weekEntries, weeklyHours } = useMemo(() => {
@@ -318,6 +322,25 @@ export function DashboardView() {
                 />
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-amber-500/10 to-amber-500/5 border-amber-500/20">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs sm:text-sm text-muted-foreground mb-1">Catch-up Hours</p>
+                <p className="text-2xl sm:text-3xl font-bold text-foreground">
+                  {(workStats.weeklyCatchUpMinutes / 60).toFixed(1)}h
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Remaining this week to reach {officeHours}h/day average.
+                </p>
+              </div>
+              <div className="size-12 sm:size-14 rounded-full bg-amber-500/20 flex items-center justify-center">
+                <Clock className="size-5 sm:size-6 text-amber-500" />
+              </div>
+            </div>
           </CardContent>
         </Card>
 

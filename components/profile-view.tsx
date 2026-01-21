@@ -13,13 +13,27 @@ import { SeedTestDataButton } from "./seed-test-data-button"
 import { OnboardingModal } from "./onboarding-modal"
 
 export function ProfileView() {
-  const { user, logout, updateUserProfile, officeHours, setOfficeHours } = useAppStore(
+  const {
+    user,
+    logout,
+    updateUserProfile,
+    officeHours,
+    setOfficeHours,
+    graceMinutes,
+    setGraceMinutes,
+    allowOverworkMinutes,
+    setAllowOverworkMinutes,
+  } = useAppStore(
     useShallow((state) => ({
       user: state.user,
       logout: state.logout,
       updateUserProfile: state.updateUserProfile,
       officeHours: state.officeHours,
       setOfficeHours: state.setOfficeHours,
+      graceMinutes: state.graceMinutes,
+      setGraceMinutes: state.setGraceMinutes,
+      allowOverworkMinutes: state.allowOverworkMinutes,
+      setAllowOverworkMinutes: state.setAllowOverworkMinutes,
     })),
   )
   const router = useRouter()
@@ -30,6 +44,8 @@ export function ProfileView() {
   const [editOfficeHours, setEditOfficeHours] = useState(officeHours.toString())
   const [isEditingHours, setIsEditingHours] = useState(false)
   const [hoursError, setHoursError] = useState("")
+  const [selectedGrace, setSelectedGrace] = useState(graceMinutes.toString())
+  const [selectedOverwork, setSelectedOverwork] = useState(allowOverworkMinutes.toString())
   const [showHelpTour, setShowHelpTour] = useState(false)
 
   const handleLogout = () => {
@@ -63,6 +79,25 @@ export function ProfileView() {
       setIsEditingHours(false)
     } catch (error) {
       setHoursError(error instanceof Error ? error.message : "Invalid office hours")
+    }
+  }
+
+  const handleUpdateTimeSafety = async () => {
+    setHoursError("")
+    try {
+      const graceValue = Number.parseInt(selectedGrace, 10)
+      const overworkValue = Number.parseInt(selectedOverwork, 10)
+      if (![0, 10, 15].includes(graceValue)) {
+        throw new Error("Grace must be 0, 10, or 15 minutes")
+      }
+      if (isNaN(overworkValue) || overworkValue < 0 || overworkValue > 60) {
+        throw new Error("Overwork must be between 0 and 60 minutes")
+      }
+      setGraceMinutes(graceValue)
+      setAllowOverworkMinutes(overworkValue)
+      await updateUserProfile({ graceMinutes: graceValue, allowOverworkMinutes: overworkValue })
+    } catch (error) {
+      setHoursError(error instanceof Error ? error.message : "Failed to update settings")
     }
   }
 
@@ -220,6 +255,61 @@ export function ProfileView() {
             </div>
           </div>
           {hoursError && <p className="text-xs text-destructive">{hoursError}</p>}
+
+          <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-border">
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Grace Period (optional)</p>
+              <p className="text-xs text-muted-foreground">Applied automatically if enabled when you reach your daily cap.</p>
+              <div className="flex gap-2">
+                <Button
+                  variant={selectedGrace === "0" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedGrace("0")}
+                  className="flex-1"
+                >
+                  Off
+                </Button>
+                <Button
+                  variant={selectedGrace === "10" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedGrace("10")}
+                  className="flex-1"
+                >
+                  10 min
+                </Button>
+                <Button
+                  variant={selectedGrace === "15" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedGrace("15")}
+                  className="flex-1"
+                >
+                  15 min
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Overwork Allowance</p>
+              <p className="text-xs text-muted-foreground">Let the app allow up to 60 extra minutes when you opt in.</p>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min="0"
+                  max="60"
+                  value={selectedOverwork}
+                  onChange={(e) => setSelectedOverwork(e.target.value)}
+                  className="w-24 bg-input border-border"
+                />
+                <span className="text-xs text-muted-foreground">minutes</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button onClick={handleUpdateTimeSafety} className="bg-primary text-primary-foreground">
+              Save Safety Settings
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

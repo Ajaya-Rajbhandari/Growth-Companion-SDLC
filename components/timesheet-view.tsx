@@ -321,6 +321,12 @@ export function TimesheetView() {
     updateTimeCategory,
     deleteTimeCategory,
     getTodayTimeEntries,
+    getTodayWorkStats,
+    setOverworkMinutesRequested,
+    overworkMinutesRequested,
+    graceMinutes,
+    allowOverworkMinutes,
+    resetOverworkForToday,
   } = useAppStore(
     useShallow((state) => ({
       timeEntries: state.timeEntries,
@@ -345,6 +351,12 @@ export function TimesheetView() {
       updateTimeCategory: state.updateTimeCategory,
       deleteTimeCategory: state.deleteTimeCategory,
       getTodayTimeEntries: state.getTodayTimeEntries,
+      getTodayWorkStats: state.getTodayWorkStats,
+      setOverworkMinutesRequested: state.setOverworkMinutesRequested,
+      overworkMinutesRequested: state.overworkMinutesRequested,
+      graceMinutes: state.graceMinutes,
+      allowOverworkMinutes: state.allowOverworkMinutes,
+      resetOverworkForToday: state.resetOverworkForToday,
     })),
   )
 
@@ -380,9 +392,20 @@ export function TimesheetView() {
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
   const [templateName, setTemplateName] = useState("")
+  const [overworkDialogOpen, setOverworkDialogOpen] = useState(false)
+  const [overworkMinutesInput, setOverworkMinutesInput] = useState(overworkMinutesRequested.toString())
+  const [warned8h, setWarned8h] = useState(false)
+  const [warned830, setWarned830] = useState(false)
+
+  const formatMinutes = (minutes: number) => {
+    const hrs = Math.floor(minutes / 60)
+    const mins = Math.round(minutes % 60)
+    return `${hrs}h ${mins}m`
+  }
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const lastUpdateRef = useRef<number>(Date.now())
+  const autoClockedOutRef = useRef(false)
 
   useEffect(() => {
     audioRef.current = new Audio()
@@ -395,6 +418,12 @@ export function TimesheetView() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (overworkDialogOpen) {
+      setOverworkMinutesInput(overworkMinutesRequested.toString())
+    }
+  }, [overworkDialogOpen, overworkMinutesRequested])
 
   const playAlarm = useCallback(() => {
     if (soundEnabled && audioRef.current) {
@@ -679,6 +708,24 @@ export function TimesheetView() {
       setTemplateName("")
       setShowTemplateDialog(false)
     }
+  }
+
+  const handleSaveOverworkMinutes = () => {
+    const value = Number.parseInt(overworkMinutesInput, 10)
+    if (isNaN(value) || value < 0 || value > allowOverworkMinutes) {
+      toast({
+        title: "Invalid overwork request",
+        description: `Enter 0-${allowOverworkMinutes} minutes.`,
+        variant: "destructive",
+      })
+      return
+    }
+    setOverworkMinutesRequested(value)
+    setOverworkDialogOpen(false)
+    toast({
+      title: "Overwork updated",
+      description: value > 0 ? `Up to ${value} minutes allowed today.` : "Overwork disabled for today.",
+    })
   }
 
   const handleUseTemplate = (template: WorkTemplate) => {
@@ -1077,23 +1124,66 @@ export function TimesheetView() {
   const periodHours = calculateTotalHours(filteredEntries)
   const periodBreakMinutes = calculateTotalBreakMinutes(filteredEntries)
 
-  // Today's stats (always shown)
+  // Work limits and stats
+  const workStats = useMemo(() => getTodayWorkStats(), [timeEntries, currentEntry, activeBreak, getTodayWorkStats])
+  const todayEntries = getTodayTimeEntries()
+  const todayHours = workStats.todayMinutes / 60
+  const weeklyHours = workStats.weeklyMinutes / 60
   const today = new Date()
-  const todayEntries = timeEntries.filter((entry) => entry.date === today.toISOString().split("T")[0])
-  const todayHours = calculateTotalHours(todayEntries)
-
-  // Week stats
   const weekStart = getStartOfWeek(today)
   const thisWeekEntries = timeEntries.filter((entry) => {
     const entryDate = new Date(entry.date)
     return entryDate >= weekStart
   })
-  const weeklyHours = calculateTotalHours(thisWeekEntries)
   const weeklyBreakMinutes = calculateTotalBreakMinutes(thisWeekEntries)
   const weekDates = new Set(thisWeekEntries.map((entry) => entry.date))
   if (currentEntry && new Date(currentEntry.date) >= weekStart) {
     weekDates.add(currentEntry.date)
   }
+
+  useEffect(() => {
+    if (workStats.todayMinutes >= workStats.warningThresholdMinutes && !warned8h) {
+      setWarned8h(true)
+      toast({
+        title: "Approaching daily limit",
+        description: `You've worked ${formatMinutes(workStats.todayMinutes)} today. Limit: ${formatMinutes(workStats.baseLimitMinutes)}.`,
+      })
+    }
+    if (workStats.todayMinutes >= workStats.secondaryWarningMinutes && !warned830) {
+      setWarned830(true)
+      toast({
+        title: "Almost at limit",
+        description: `About ${formatMinutes(workStats.appliedLimitMinutes - workStats.todayMinutes)} remaining before auto clock-out.`,
+      })
+    }
+    if (workStats.status === "hardCap" && currentEntry && !autoClockedOutRef.current) {
+      autoClockedOutRef.current = true
+      const entryId = currentEntry.id
+      clockOut()
+        .then(() => {
+          if (entryId) {
+            updateEntryNotes(entryId, "[Auto clocked out at daily limit]").catch(() => {})
+          }
+          toast({
+            title: "Auto clocked out",
+            description: `Reached your limit (${formatMinutes(workStats.appliedLimitMinutes)}).`,
+          })
+          resetOverworkForToday()
+        })
+        .catch(() => {
+          // swallow
+        })
+    } else if (workStats.status !== "hardCap") {
+      autoClockedOutRef.current = false
+    }
+  }, [
+    workStats,
+    warned8h,
+    warned830,
+    currentEntry,
+    clockOut,
+    resetOverworkForToday,
+  ])
   const activeDaysWeek = weekDates.size
   const getDateKey = (date: Date) => date.toISOString().split("T")[0]
   const entryDates = new Set(timeEntries.map((entry) => entry.date))
@@ -1269,7 +1359,7 @@ export function TimesheetView() {
                 {(() => {
                   const todayEntries = getTodayTimeEntries()
                   const hasClockedInToday = todayEntries.length > 0
-                  const isDisabled = !!currentEntry || hasClockedInToday
+                  const isDisabled = !!currentEntry || hasClockedInToday || workStats.status === "hardCap"
                   if (hasClockedInToday && !currentEntry) {
                     return (
                       <Button className="flex-1 w-full sm:w-auto min-w-0" size="lg" disabled>
@@ -1341,6 +1431,14 @@ export function TimesheetView() {
                           {String(elapsedTime.seconds).padStart(2, "0")}s
                         </span>
                       </div>
+                      <p className="text-xs sm:text-sm text-foreground/70 mt-1">
+                        Remaining today: {formatMinutes(workStats.remainingMinutes)}
+                      </p>
+                      {workStats.overtimeBadge && (
+                        <Badge variant="destructive" className="mt-1">
+                          Overtime
+                        </Badge>
+                      )}
                       {currentEntry.breakMinutes > 0 && (
                         <p className="text-xs sm:text-sm text-foreground/70 mt-2">
                           Total break: {currentEntry.breakMinutes} minutes ({(currentEntry.breaks || []).length} break
@@ -1443,6 +1541,17 @@ export function TimesheetView() {
                       <Play className="h-4 w-4" />
                       Switch Task
                     </Button>
+                  {allowOverworkMinutes > 0 && (
+                    <Button
+                      onClick={() => setOverworkDialogOpen(true)}
+                      variant="outline"
+                      className="gap-2 w-full sm:w-auto min-h-[44px]"
+                      disabled={overworkMinutesRequested >= allowOverworkMinutes}
+                    >
+                      <Timer className="h-4 w-4" />
+                      {overworkMinutesRequested > 0 ? `Overwork: ${overworkMinutesRequested}m` : "Add Overwork"}
+                    </Button>
+                  )}
                     <Button onClick={() => setBreakDialogOpen(true)} variant="outline" className="gap-2 w-full sm:w-auto min-h-[44px]">
                       <Coffee className="h-4 w-4" />
                       Take Break
@@ -1465,6 +1574,32 @@ export function TimesheetView() {
           </Card>
         )}
 
+        <Dialog open={overworkDialogOpen} onOpenChange={setOverworkDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Request Overwork</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-foreground/70">
+                You can add up to {allowOverworkMinutes} extra minutes for today. If you leave this at 0, only your grace period ({graceMinutes} minutes) will apply.
+              </p>
+              <Input
+                type="number"
+                min={0}
+                max={allowOverworkMinutes}
+                value={overworkMinutesInput}
+                onChange={(e) => setOverworkMinutesInput(e.target.value)}
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setOverworkDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveOverworkMinutes}>Save</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 w-full max-w-full">
             <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
@@ -1475,6 +1610,10 @@ export function TimesheetView() {
             <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
                   <div className="text-xl sm:text-2xl font-bold text-foreground">{todayHours.toFixed(1)}h</div>
                   <p className="text-xs text-foreground/70 mt-1">{todayEntries.length} session(s)</p>
+                  <p className="text-xs text-foreground/70 mt-1">
+                    Remaining: {formatMinutes(workStats.remainingMinutes)}
+                  </p>
+                  {workStats.overtimeBadge && <Badge variant="destructive" className="mt-1">Over limit</Badge>}
             </CardContent>
           </Card>
 
@@ -1486,6 +1625,13 @@ export function TimesheetView() {
             <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
                   <div className="text-xl sm:text-2xl font-bold text-foreground">{weeklyHours.toFixed(1)}h</div>
                   <p className="text-xs text-foreground/70 mt-1">{thisWeekEntries.length} session(s)</p>
+              {workStats.weeklyCatchUpMinutes > 0 ? (
+                <p className="text-xs text-amber-500 mt-1">
+                  Catch-up available: {formatMinutes(workStats.weeklyCatchUpMinutes)}
+                </p>
+              ) : (
+                <p className="text-xs text-foreground/60 mt-1">On track for the week</p>
+              )}
             </CardContent>
           </Card>
 

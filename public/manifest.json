@@ -1,0 +1,61 @@
+{
+  "name": "Growth Companion - Personal Assistant",
+  "short_name": "Companion",
+  "description": "Your personal assistant for task management, time tracking, goals, and productivity",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-light-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-dark-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Tasks",
+      "short_name": "Tasks",
+      "description": "View and manage your tasks",
+      "url": "/?view=tasks",
+      "icons": [{ "src": "/icon-light-32x32.png", "sizes": "32x32" }]
+    },
+    {
+      "name": "Timesheet",
+      "short_name": "Timesheet",
+      "description": "Track your working hours",
+      "url": "/?view=timesheet",
+      "icons": [{ "src": "/icon-light-32x32.png", "sizes": "32x32" }]
+    },
+    {
+      "name": "Notes",
+      "short_name": "Notes",
+      "description": "View your notes",
+      "url": "/?view=notes",
+      "icons": [{ "src": "/icon-light-32x32.png", "sizes": "32x32" }]
+    }
+  ]
+}

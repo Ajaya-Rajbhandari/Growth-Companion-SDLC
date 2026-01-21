@@ -139,6 +139,8 @@ export interface User {
   avatar?: string
   createdAt: string
   officeHours?: number // Maximum office hours per day (default: 9)
+  graceMinutes?: number // Optional daily grace minutes (0,10,15)
+  allowOverworkMinutes?: number // Max overwork minutes user can request (0-60)
 }
 
 export interface ChatSession {
@@ -359,6 +361,9 @@ interface AppState {
   habitLogs: HabitLog[] // Habit logs for tracking habit completion
   user: User | null
   officeHours: number // Maximum office hours per day (default: 9)
+  graceMinutes: number // Optional daily grace minutes (0,10,15)
+  allowOverworkMinutes: number // Max overwork minutes user can request (0-60)
+  overworkMinutesRequested: number // User opt-in overwork minutes for today (0-60)
   isLoggedIn: boolean
   authInitialized: boolean
   authError: string
@@ -417,6 +422,22 @@ interface AppState {
   setOnboardingStatus: (completed: boolean) => void
   updateUserProfile: (updates: Partial<User>) => Promise<void>
   setOfficeHours: (hours: number) => void
+  setGraceMinutes: (minutes: number) => void
+  setAllowOverworkMinutes: (minutes: number) => void
+  setOverworkMinutesRequested: (minutes: number) => void
+  resetOverworkForToday: () => void
+  getTodayWorkStats: () => {
+    todayMinutes: number
+    weeklyMinutes: number
+    remainingMinutes: number
+    baseLimitMinutes: number
+    appliedLimitMinutes: number
+    status: "normal" | "warning" | "grace" | "overwork" | "hardCap"
+    warningThresholdMinutes: number
+    secondaryWarningMinutes: number
+    overtimeBadge: boolean
+    weeklyCatchUpMinutes: number
+  }
   setOnboardingStep: (step: number) => void
   completeOnboarding: () => Promise<void>
   skipOnboarding: () => Promise<void>
@@ -503,6 +524,9 @@ export const useAppStore = create<AppState>()(
       habitLogs: [], // Initialize habit logs
       user: null,
       officeHours: 9, // Default office hours per day
+      graceMinutes: 0,
+      allowOverworkMinutes: 60,
+      overworkMinutesRequested: 0,
       isLoggedIn: false,
       authInitialized: false,
       authError: "",
@@ -690,8 +714,11 @@ export const useAppStore = create<AppState>()(
       setIsChatOpen: (open) => set({ isChatOpen: open }),
       clearChatHistory: () => set({ chatMessages: [] }),
       clockIn: async (title?: string, category?: string) => {
-        const { user, currentEntry, timeEntries, officeHours } = get()
+        const { user } = get()
         if (!user) return
+        // reset per-day overwork when starting a new session
+        set({ overworkMinutesRequested: 0 })
+        const { currentEntry, timeEntries, officeHours, graceMinutes, overworkMinutesRequested, allowOverworkMinutes } = get()
 
         // Validation 1: Check if there's an active session
         if (currentEntry) {
@@ -715,18 +742,25 @@ export const useAppStore = create<AppState>()(
           throw new Error("You can only clock in once per day. You have already clocked in today.")
         }
 
-        // Validation 3: Check office hours limit (calculate today's hours)
-        let todayHours = todayEntries.reduce((total, entry) => {
+        // Validation 3: Check office hours + grace/overwork limit
+        const completedMs = todayEntries.reduce((total, entry) => {
           if (entry.clockOut) {
             const start = new Date(entry.clockIn).getTime()
             const end = new Date(entry.clockOut).getTime()
             const diffMs = Math.max(0, end - start - entry.breakMinutes * 60 * 1000)
-            return total + diffMs / (1000 * 60 * 60)
+            return total + diffMs
           }
           return total
         }, 0)
-        // Note: We don't check office hours limit here because user can only clock in once per day
-        // The limit will be enforced when they try to work beyond office hours (can be added as a warning)
+
+        const baseLimitMs = officeHours * 60 * 60 * 1000
+        const graceMs = (graceMinutes || 0) * 60 * 1000
+        const requestedOverworkMs = Math.min(overworkMinutesRequested, allowOverworkMinutes) * 60 * 1000
+        const appliedLimitMs = baseLimitMs + graceMs + requestedOverworkMs
+
+        if (completedMs >= appliedLimitMs) {
+          throw new Error("You have reached your daily limit and cannot clock in today.")
+        }
 
         const now = new Date()
         const entry = {
@@ -1001,10 +1035,8 @@ export const useAppStore = create<AppState>()(
         }
 
         // Calculate weekly hours
-        const weekStart = new Date(today)
-        const dayOfWeek = weekStart.getDay()
-        weekStart.setDate(weekStart.getDate() - dayOfWeek)
-        weekStart.setHours(0, 0, 0, 0)
+        const dayOfWeek = today.getDay()
+        const weekStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - dayOfWeek))
 
         const weekEntries = state.timeEntries.filter((e) => new Date(e.date) >= weekStart)
         let weeklyHours = weekEntries.reduce((total, entry) => {
@@ -1042,6 +1074,110 @@ export const useAppStore = create<AppState>()(
           breakMinutes: state.currentEntry?.breakMinutes,
           todayHours: Math.round(todayHours * 100) / 100,
           weeklyHours: Math.round(weeklyHours * 100) / 100,
+        }
+      },
+
+      getTodayWorkStats: () => {
+        const state = get()
+        const today = new Date()
+        const todayStr = today.toISOString().split("T")[0]
+
+        const todayEntries = state.timeEntries.filter((e) => e.date === todayStr)
+        let todayMinutes = todayEntries.reduce((total, entry) => {
+          if (entry.clockOut) {
+            const start = new Date(entry.clockIn).getTime()
+            const end = new Date(entry.clockOut).getTime()
+            const diffMs = Math.max(0, end - start - entry.breakMinutes * 60 * 1000)
+            return total + diffMs / (1000 * 60)
+          }
+          return total
+        }, 0)
+
+        if (state.currentEntry && !state.activeBreak) {
+          const start = new Date(state.currentEntry.clockIn).getTime()
+          const now = Date.now()
+          const breakMs = state.currentEntry.breakMinutes * 60 * 1000
+          const diffMs = Math.max(0, now - start - breakMs)
+          todayMinutes += diffMs / (1000 * 60)
+        }
+
+        // Weekly totals
+        const dayOfWeek = today.getDay()
+        const weekStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - dayOfWeek))
+        const weekEntries = state.timeEntries.filter((e) => new Date(e.date) >= weekStart)
+        let weeklyMinutes = weekEntries.reduce((total, entry) => {
+          if (entry.clockOut) {
+            const start = new Date(entry.clockIn).getTime()
+            const end = new Date(entry.clockOut).getTime()
+            const diffMs = Math.max(0, end - start - entry.breakMinutes * 60 * 1000)
+            return total + diffMs / (1000 * 60)
+          }
+          return total
+        }, 0)
+        if (state.currentEntry && !state.activeBreak && new Date(state.currentEntry.date) >= weekStart) {
+          const start = new Date(state.currentEntry.clockIn).getTime()
+          const now = Date.now()
+          const breakMs = state.currentEntry.breakMinutes * 60 * 1000
+          const diffMs = Math.max(0, now - start - breakMs)
+          weeklyMinutes += diffMs / (1000 * 60)
+        }
+
+        const baseLimitMinutes = (state.officeHours || 9) * 60
+        const warningThresholdMinutes = Math.max(0, baseLimitMinutes - 60) // 1 hour before
+        const secondaryWarningMinutes = Math.max(0, baseLimitMinutes - 30) // 30 minutes before
+        const graceMinutes = state.graceMinutes || 0
+        const overworkMinutes = Math.min(state.overworkMinutesRequested, state.allowOverworkMinutes)
+        const appliedLimitMinutes = baseLimitMinutes + graceMinutes + overworkMinutes
+        const remainingMinutes = Math.max(0, appliedLimitMinutes - todayMinutes)
+
+        let status: "normal" | "warning" | "grace" | "overwork" | "hardCap" = "normal"
+        if (todayMinutes >= appliedLimitMinutes - 0.01) {
+          status = "hardCap"
+        } else if (todayMinutes >= baseLimitMinutes + (overworkMinutes > 0 ? 0.01 : graceMinutes ? 0.01 : 0)) {
+          status = overworkMinutes > 0 ? "overwork" : "grace"
+        } else if (todayMinutes >= secondaryWarningMinutes) {
+          status = "warning"
+        } else if (todayMinutes >= warningThresholdMinutes) {
+          status = "warning"
+        }
+
+        // Weekly catch-up: sum deficits for days in this week relative to base limit
+        const weekDayDeficits = Array.from({ length: dayOfWeek + 1 }).reduce<number>((acc, _, idx) => {
+          const d = new Date(weekStart)
+          d.setUTCDate(d.getUTCDate() + idx)
+          const dateKey = d.toISOString().split("T")[0]
+          const dayEntries = state.timeEntries.filter((e) => e.date === dateKey)
+          let minutes = dayEntries.reduce((total, entry) => {
+            if (entry.clockOut) {
+              const start = new Date(entry.clockIn).getTime()
+              const end = new Date(entry.clockOut).getTime()
+              const diffMs = Math.max(0, end - start - entry.breakMinutes * 60 * 1000)
+              return total + diffMs / (1000 * 60)
+            }
+            return total
+          }, 0)
+          if (state.currentEntry && state.currentEntry.date === dateKey && !state.activeBreak) {
+            const start = new Date(state.currentEntry.clockIn).getTime()
+            const now = Date.now()
+            const breakMs = state.currentEntry.breakMinutes * 60 * 1000
+            const diffMs = Math.max(0, now - start - breakMs)
+            minutes += diffMs / (1000 * 60)
+          }
+          const deficit = Math.max(0, baseLimitMinutes - minutes)
+          return acc + deficit
+        }, 0)
+
+        return {
+          todayMinutes,
+          weeklyMinutes,
+          remainingMinutes,
+          baseLimitMinutes,
+          appliedLimitMinutes,
+          status,
+          warningThresholdMinutes,
+          secondaryWarningMinutes,
+          overtimeBadge: todayMinutes > baseLimitMinutes,
+          weeklyCatchUpMinutes: weekDayDeficits,
         }
       },
 
@@ -1322,9 +1458,20 @@ export const useAppStore = create<AppState>()(
       },
 
       updateUserProfile: async (updates: Partial<User>) => {
+        const metadataUpdates: Record<string, any> = {}
         if (updates.name) {
+          metadataUpdates.full_name = updates.name
+        }
+        if (updates.graceMinutes !== undefined) {
+          metadataUpdates.grace_minutes = updates.graceMinutes
+        }
+        if (updates.allowOverworkMinutes !== undefined) {
+          metadataUpdates.allow_overwork_minutes = updates.allowOverworkMinutes
+        }
+
+        if (Object.keys(metadataUpdates).length > 0) {
           const { error } = await supabase.auth.updateUser({
-            data: { full_name: updates.name },
+            data: metadataUpdates,
           })
           if (error) throw error
         }
@@ -1337,6 +1484,27 @@ export const useAppStore = create<AppState>()(
           throw new Error("Office hours must be between 1 and 24 hours")
         }
         set({ officeHours: hours })
+      },
+      setGraceMinutes: (minutes: number) => {
+        if (![0, 10, 15].includes(minutes)) {
+          throw new Error("Grace minutes must be 0, 10, or 15")
+        }
+        set({ graceMinutes: minutes })
+      },
+      setAllowOverworkMinutes: (minutes: number) => {
+        if (minutes < 0 || minutes > 60) {
+          throw new Error("Overwork allowance must be between 0 and 60 minutes")
+        }
+        set({ allowOverworkMinutes: minutes })
+      },
+      setOverworkMinutesRequested: (minutes: number) => {
+        if (minutes < 0 || minutes > 60) {
+          throw new Error("Requested overwork must be between 0 and 60 minutes")
+        }
+        set({ overworkMinutesRequested: minutes })
+      },
+      resetOverworkForToday: () => {
+        set({ overworkMinutesRequested: 0 })
       },
       setOnboardingStep: (step: number) => {
         set({ currentOnboardingStep: step })
