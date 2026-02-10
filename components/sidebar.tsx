@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
+import { NAV_VIEW_IDS } from "@/lib/feature-flags"
 import { LayoutDashboard, CheckSquare, FileText, Sparkles, Clock, User, LogOut, Sun, Moon, Calendar as CalendarIcon, Target, Flame } from "lucide-react"
 import { useTheme } from "next-themes"
 
@@ -86,7 +87,7 @@ export function Sidebar() {
 
       <nav className="flex-1 px-3 overflow-y-auto">
         <ul className="space-y-1">
-          {navItems.map((item) => (
+          {navItems.filter((item) => NAV_VIEW_IDS.includes(item.id)).map((item) => (
             <li key={item.id}>
               <button
                 onClick={() => setActiveView(item.id)}

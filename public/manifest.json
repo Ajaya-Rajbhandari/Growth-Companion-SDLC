@@ -49,6 +49,13 @@
   "screenshots": [],
   "shortcuts": [
     {
+      "name": "Quick actions",
+      "short_name": "Widget",
+      "description": "Clock in / out and log task",
+      "url": "/widget",
+      "icons": [{ "src": "/icon-light-32x32.png", "sizes": "32x32" }]
+    },
+    {
       "name": "Tasks",
       "short_name": "Tasks",
       "description": "View and manage your tasks",

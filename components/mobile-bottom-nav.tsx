@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
+import { NAV_VIEW_IDS } from "@/lib/feature-flags"
 import {
   LayoutDashboard,
   CheckSquare,
@@ -81,7 +82,7 @@ export function MobileBottomNav() {
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-sidebar/95 backdrop-blur-sm border-t border-sidebar-border pb-safe">
       <div className="flex overflow-x-auto scrollbar-hide gap-1 px-1 py-2 max-h-[80px] snap-x snap-mandatory">
-        {navItems.map((item) => {
+        {navItems.filter((item) => NAV_VIEW_IDS.includes(item.id)).map((item) => {
           const isActive = activeView === item.id
           return (
             <button

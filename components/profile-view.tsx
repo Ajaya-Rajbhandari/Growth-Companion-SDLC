@@ -7,8 +7,17 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { useRouter } from "next/navigation"
-import { Edit3, LogOut, User, Mail, Calendar, HelpCircle } from "lucide-react"
-import { useState } from "react"
+import { Edit3, LogOut, User, Mail, Calendar, HelpCircle, Volume2 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  getStoredSoundId,
+  setStoredSoundId,
+  SOUND_OPTIONS,
+  playNotificationSound,
+  stopNotificationSound,
+  type NotificationSoundId,
+} from "@/lib/notification-sound"
 import { SeedTestDataButton } from "./seed-test-data-button"
 import { OnboardingModal } from "./onboarding-modal"
 
@@ -47,6 +56,11 @@ export function ProfileView() {
   const [selectedGrace, setSelectedGrace] = useState(graceMinutes.toString())
   const [selectedOverwork, setSelectedOverwork] = useState(allowOverworkMinutes.toString())
   const [showHelpTour, setShowHelpTour] = useState(false)
+  const [notificationSoundId, setNotificationSoundId] = useState<NotificationSoundId>("default")
+
+  useEffect(() => {
+    setNotificationSoundId(getStoredSoundId())
+  }, [])
 
   const handleLogout = () => {
     logout()
@@ -308,6 +322,51 @@ export function ProfileView() {
           <div className="flex justify-end">
             <Button onClick={handleUpdateTimeSafety} className="bg-primary text-primary-foreground">
               Save Safety Settings
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <Volume2 className="size-5" />
+            Break reminder sound
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Sound played when your break time ends. You can also change this from the Timesheet (sound icon).
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={notificationSoundId}
+              onValueChange={(v) => {
+                const id = v as NotificationSoundId
+                setNotificationSoundId(id)
+                setStoredSoundId(id)
+              }}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SOUND_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                playNotificationSound(notificationSoundId, false)
+                setTimeout(stopNotificationSound, 800)
+              }}
+            >
+              Preview
             </Button>
           </div>
         </CardContent>

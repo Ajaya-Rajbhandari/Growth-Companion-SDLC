@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
+import { isViewEnabled, type ViewId } from "@/lib/feature-flags"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -28,11 +29,30 @@ import {
   Award,
   Bell,
 } from "lucide-react"
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis, ReferenceLine } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { cn } from "@/lib/utils"
 import { format, isToday, isTomorrow, parseISO, differenceInDays } from "date-fns"
 import { useRouter } from "next/navigation"
+
+function formatMinutes(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60)
+  const mins = Math.round(totalMinutes % 60)
+  if (hours > 0 && mins > 0) return `${hours}h ${mins}m`
+  if (hours > 0) return `${hours}h`
+  return `${mins}m`
+}
+
+function getDailyLimitStatusLabel(status: "normal" | "warning" | "grace" | "overwork" | "hardCap"): string {
+  switch (status) {
+    case "normal": return "On track"
+    case "warning": return "Almost at target"
+    case "grace": return "In grace"
+    case "overwork": return "Overwork"
+    case "hardCap": return "At daily limit"
+    default: return "On track"
+  }
+}
 
 export function DashboardView() {
   const router = useRouter()
@@ -51,6 +71,9 @@ export function DashboardView() {
     clockOut,
     setActiveView,
     officeHours,
+    graceMinutes,
+    allowOverworkMinutes,
+    overworkMinutesRequested,
     getTodayWorkStats,
   } = useAppStore(
     useShallow((state) => ({
@@ -68,6 +91,9 @@ export function DashboardView() {
       clockOut: state.clockOut,
       setActiveView: state.setActiveView,
       officeHours: state.officeHours,
+      graceMinutes: state.graceMinutes,
+      allowOverworkMinutes: state.allowOverworkMinutes,
+      overworkMinutesRequested: state.overworkMinutesRequested,
       getTodayWorkStats: state.getTodayWorkStats,
     })),
   )
@@ -225,7 +251,7 @@ export function DashboardView() {
       clockIn()
     } else if (action === "clock-out") {
       clockOut()
-    } else {
+    } else if (isViewEnabled(action as ViewId)) {
       setActiveView(action as any)
     }
   }
@@ -255,44 +281,48 @@ export function DashboardView() {
         
         {/* Quick Actions */}
         <div className="flex flex-wrap gap-2">
-          {currentEntry ? (
+          <Button
+            onClick={() => handleQuickAction("clock-in")}
+            size="sm"
+            variant={currentEntry ? "outline" : "default"}
+            className="min-h-[44px] sm:min-h-0"
+            disabled={!!currentEntry}
+          >
+            <Play className="size-4 mr-2" />
+            Clock In
+          </Button>
+          <Button
+            onClick={() => handleQuickAction("clock-out")}
+            size="sm"
+            variant="destructive"
+            className="min-h-[44px] sm:min-h-0"
+            disabled={!currentEntry}
+          >
+            <Square className="size-4 mr-2" />
+            Clock Out
+          </Button>
+          {isViewEnabled("tasks") && (
             <Button
-              onClick={() => handleQuickAction("clock-out")}
+              onClick={() => handleQuickAction("tasks")}
               size="sm"
-              variant="destructive"
+              variant="outline"
               className="min-h-[44px] sm:min-h-0"
             >
-              <Square className="size-4 mr-2" />
-              Clock Out
-            </Button>
-          ) : (
-            <Button
-              onClick={() => handleQuickAction("clock-in")}
-              size="sm"
-              className="min-h-[44px] sm:min-h-0"
-            >
-              <Play className="size-4 mr-2" />
-              Clock In
+              <Plus className="size-4 mr-2" />
+              Add Task
             </Button>
           )}
-          <Button
-            onClick={() => handleQuickAction("tasks")}
-            size="sm"
-            variant="outline"
-            className="min-h-[44px] sm:min-h-0"
-          >
-            <Plus className="size-4 mr-2" />
-            Add Task
-          </Button>
-          <Button
-            onClick={() => handleQuickAction("notes")}
-            size="sm"
-            variant="outline"
-            className="min-h-[44px] sm:min-h-0"
-          >
-            <Plus className="size-4 mr-2" />
-            Add Note
-          </Button>
+          {isViewEnabled("notes") && (
+            <Button
+              onClick={() => handleQuickAction("notes")}
+              size="sm"
+              variant="outline"
+              className="min-h-[44px] sm:min-h-0"
+            >
+              <Plus className="size-4 mr-2" />
+              Add Note
+            </Button>
+          )}
         </div>
       </div>
 
@@ -315,12 +345,74 @@ export function DashboardView() {
               </div>
             </div>
             {officeHours > 0 && (
-              <div className="mt-3 w-full bg-secondary rounded-full h-1.5">
-                <div
-                  className="bg-primary h-1.5 rounded-full transition-all"
-                  style={{ width: `${hoursProgress}%` }}
-                />
-              </div>
+              <>
+                <div className="mt-3 w-full bg-secondary rounded-full h-1.5">
+                  <div
+                    className={cn(
+                      "h-1.5 rounded-full transition-all",
+                      workStats.status === "hardCap" && "bg-destructive",
+                      workStats.status === "overwork" && "bg-amber-500",
+                      workStats.status === "grace" && "bg-amber-500/80",
+                      (workStats.status === "normal" || workStats.status === "warning") && "bg-primary",
+                    )}
+                    style={{ width: `${Math.min(100, hoursProgress)}%` }}
+                  />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      "text-[10px] sm:text-xs font-medium px-1.5 py-0.5 rounded",
+                      workStats.status === "hardCap" && "bg-destructive/20 text-destructive",
+                      workStats.status === "overwork" && "bg-amber-500/20 text-amber-700 dark:text-amber-300",
+                      workStats.status === "grace" && "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+                      workStats.status === "warning" && "bg-primary/20 text-primary",
+                      workStats.status === "normal" && "bg-primary/10 text-primary",
+                    )}
+                  >
+                    {getDailyLimitStatusLabel(workStats.status)}
+                  </span>
+                  {workStats.remainingMinutes > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {formatMinutes(workStats.remainingMinutes)} left today
+                    </span>
+                  )}
+                  {workStats.status === "hardCap" && (
+                    <span className="text-xs text-muted-foreground">Daily limit reached</span>
+                  )}
+                  {workStats.overtimeBadge && (
+                    <span className="text-xs text-muted-foreground">
+                      {formatMinutes(Math.max(0, workStats.todayMinutes - workStats.baseLimitMinutes))} over {officeHours}h target
+                    </span>
+                  )}
+                </div>
+                {(graceMinutes > 0 || allowOverworkMinutes > 0) && (
+                  <p className="text-[10px] text-muted-foreground mt-1.5">
+                    Limit: {officeHours}h
+                    {graceMinutes > 0 && ` + ${graceMinutes}m grace`}
+                    {overworkMinutesRequested > 0 && ` + ${overworkMinutesRequested}m overwork`}
+                    {allowOverworkMinutes > 0 && (
+                      overworkMinutesRequested === 0 ? (
+                        <Button
+                          variant="link"
+                          className="h-auto p-0 text-[10px] text-muted-foreground underline"
+                          onClick={() => setActiveView("timesheet")}
+                        >
+                          Add overwork in Timesheet
+                        </Button>
+                      ) : null
+                    )}
+                  </p>
+                )}
+                {officeHours > 0 && (
+                  <Button
+                    variant="link"
+                    className="h-auto p-0 text-[10px] text-muted-foreground underline mt-0.5"
+                    onClick={() => setActiveView("profile")}
+                  >
+                    Set daily target & grace in Profile
+                  </Button>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -329,12 +421,14 @@ export function DashboardView() {
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs sm:text-sm text-muted-foreground mb-1">Catch-up Hours</p>
+                <p className="text-xs sm:text-sm text-muted-foreground mb-1">Weekly catch-up</p>
                 <p className="text-2xl sm:text-3xl font-bold text-foreground">
                   {(workStats.weeklyCatchUpMinutes / 60).toFixed(1)}h
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Remaining this week to reach {officeHours}h/day average.
+                  {officeHours > 0
+                    ? `Hours short this week to reach ${officeHours}h/day target`
+                    : "Hours under target this week (set daily target in Profile)"}
                 </p>
               </div>
               <div className="size-12 sm:size-14 rounded-full bg-amber-500/20 flex items-center justify-center">
@@ -344,62 +438,68 @@ export function DashboardView() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-chart-2/10 to-chart-2/5 border-chart-2/20">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground mb-1">Pending Tasks</p>
-                <p className="text-2xl sm:text-3xl font-bold text-foreground">{pendingTasks}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {completedTasks} completed
-                </p>
+        {isViewEnabled("tasks") && (
+          <Card className="bg-gradient-to-br from-chart-2/10 to-chart-2/5 border-chart-2/20">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm text-muted-foreground mb-1">Pending Tasks</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-foreground">{pendingTasks}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {completedTasks} completed
+                  </p>
+                </div>
+                <div className="size-12 sm:size-14 rounded-full bg-chart-2/20 flex items-center justify-center">
+                  <CheckCircle2 className="size-5 sm:size-6 text-chart-2" />
+                </div>
               </div>
-              <div className="size-12 sm:size-14 rounded-full bg-chart-2/20 flex items-center justify-center">
-                <CheckCircle2 className="size-5 sm:size-6 text-chart-2" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card className="bg-gradient-to-br from-accent/10 to-accent/5 border-accent/20">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground mb-1">Active Goals</p>
-                <p className="text-2xl sm:text-3xl font-bold text-foreground">{activeGoals.length}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {goalsProgress}% avg progress
-                </p>
+        {isViewEnabled("goals") && (
+          <Card className="bg-gradient-to-br from-accent/10 to-accent/5 border-accent/20">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm text-muted-foreground mb-1">Active Goals</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-foreground">{activeGoals.length}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {goalsProgress}% avg progress
+                  </p>
+                </div>
+                <div className="size-12 sm:size-14 rounded-full bg-accent/20 flex items-center justify-center">
+                  <Target className="size-5 sm:size-6 text-accent" />
+                </div>
               </div>
-              <div className="size-12 sm:size-14 rounded-full bg-accent/20 flex items-center justify-center">
-                <Target className="size-5 sm:size-6 text-accent" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card className="bg-gradient-to-br from-chart-3/10 to-chart-3/5 border-chart-3/20">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground mb-1">Habits Today</p>
-                <p className="text-2xl sm:text-3xl font-bold text-foreground">
-                  {todayHabits.length}/{habits.length}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {habitsCompletionRate}% completed
-                </p>
+        {isViewEnabled("habits") && (
+          <Card className="bg-gradient-to-br from-chart-3/10 to-chart-3/5 border-chart-3/20">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm text-muted-foreground mb-1">Habits Today</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-foreground">
+                    {todayHabits.length}/{habits.length}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {habitsCompletionRate}% completed
+                  </p>
+                </div>
+                <div className="size-12 sm:size-14 rounded-full bg-chart-3/20 flex items-center justify-center">
+                  <Flame className="size-5 sm:size-6 text-chart-3" />
+                </div>
               </div>
-              <div className="size-12 sm:size-14 rounded-full bg-chart-3/20 flex items-center justify-center">
-                <Flame className="size-5 sm:size-6 text-chart-3" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Urgent Items Section */}
-      {(overdueTasks.length > 0 || upcomingTasks.length > 0 || highPriorityTasks.length > 0) && (
+      {isViewEnabled("tasks") && (overdueTasks.length > 0 || upcomingTasks.length > 0 || highPriorityTasks.length > 0) && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-lg sm:text-xl font-semibold text-foreground flex items-center gap-2">
@@ -530,7 +630,25 @@ export function DashboardView() {
                   axisLine={false}
                   tick={{ fill: "hsl(var(--muted-foreground))" }}
                 />
+                <YAxis
+                  hide
+                  domain={[
+                    0,
+                    officeHours > 0
+                      ? Math.max(officeHours, Number(maxDailyHours || 0) + 0.5)
+                      : Number(maxDailyHours || 0) + 0.5 || 1,
+                  ]}
+                />
                 <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
+                {officeHours > 0 && (
+                  <ReferenceLine
+                    y={officeHours}
+                    stroke="hsl(var(--muted-foreground))"
+                    strokeDasharray="5 5"
+                    strokeOpacity={0.8}
+                    label={{ value: `${officeHours}h target`, position: "right", fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  />
+                )}
                 <Area
                   type="monotone"
                   dataKey="hours"
@@ -566,18 +684,20 @@ export function DashboardView() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 p-4 sm:p-6 pt-0">
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs sm:text-sm text-muted-foreground">Task Completion</span>
-                <span className="text-xs sm:text-sm font-semibold text-foreground">{completionRate}%</span>
+            {isViewEnabled("tasks") && (
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs sm:text-sm text-muted-foreground">Task Completion</span>
+                  <span className="text-xs sm:text-sm font-semibold text-foreground">{completionRate}%</span>
+                </div>
+                <div className="w-full bg-secondary rounded-full h-2.5">
+                  <div
+                    className="bg-primary h-2.5 rounded-full transition-all"
+                    style={{ width: `${completionRate}%` }}
+                  />
+                </div>
               </div>
-              <div className="w-full bg-secondary rounded-full h-2.5">
-                <div
-                  className="bg-primary h-2.5 rounded-full transition-all"
-                  style={{ width: `${completionRate}%` }}
-                />
-              </div>
-            </div>
+            )}
             <div className="flex justify-between items-center pt-2 border-t border-border">
               <span className="text-xs sm:text-sm text-muted-foreground">Weekly Sessions</span>
               <span className="text-base sm:text-lg font-bold text-foreground">{weekEntries.length}</span>
@@ -632,7 +752,7 @@ export function DashboardView() {
       )}
 
       {/* Goals and Habits Progress */}
-      {(activeGoals.length > 0 || habits.length > 0) && (
+      {(isViewEnabled("goals") || isViewEnabled("habits")) && (activeGoals.length > 0 || habits.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
           {activeGoals.length > 0 && (
             <Card className="bg-card border-border">
@@ -726,43 +846,45 @@ export function DashboardView() {
 
       {/* Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-        <Card className="bg-card border-border">
-          <CardHeader className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base sm:text-lg font-semibold">Recent Notes</CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setActiveView("notes")}
-                className="text-xs"
-              >
-                View All
-                <ArrowRight className="size-3 ml-1" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-0">
-            {notes.length === 0 ? (
-              <p className="text-muted-foreground text-xs sm:text-sm">No notes yet. Start writing!</p>
-            ) : (
-              <ul className="space-y-3">
-                {notes.slice(0, 4).map((note) => (
-                  <li key={note.id} className="border-b border-border pb-3 last:border-0 last:pb-0">
-                    <p className="font-medium text-xs sm:text-sm text-card-foreground line-clamp-1">
-                      {note.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                      {note.content}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {format(parseISO(note.updatedAt), "MMM d, yyyy")}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        {isViewEnabled("notes") && (
+          <Card className="bg-card border-border">
+            <CardHeader className="p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base sm:text-lg font-semibold">Recent Notes</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setActiveView("notes")}
+                  className="text-xs"
+                >
+                  View All
+                  <ArrowRight className="size-3 ml-1" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0">
+              {notes.length === 0 ? (
+                <p className="text-muted-foreground text-xs sm:text-sm">No notes yet. Start writing!</p>
+              ) : (
+                <ul className="space-y-3">
+                  {notes.slice(0, 4).map((note) => (
+                    <li key={note.id} className="border-b border-border pb-3 last:border-0 last:pb-0">
+                      <p className="font-medium text-xs sm:text-sm text-card-foreground line-clamp-1">
+                        {note.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                        {note.content}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {format(parseISO(note.updatedAt), "MMM d, yyyy")}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="bg-card border-border">
           <CardHeader className="p-4 sm:p-6">
@@ -771,14 +893,18 @@ export function DashboardView() {
             </div>
           </CardHeader>
           <CardContent className="p-4 sm:p-6 pt-0 space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-xs sm:text-sm text-muted-foreground">Total Notes</span>
-              <span className="text-base sm:text-lg font-bold text-foreground">{notes.length}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-xs sm:text-sm text-muted-foreground">Total Tasks</span>
-              <span className="text-base sm:text-lg font-bold text-foreground">{tasks.length}</span>
-            </div>
+            {isViewEnabled("notes") && (
+              <div className="flex justify-between items-center">
+                <span className="text-xs sm:text-sm text-muted-foreground">Total Notes</span>
+                <span className="text-base sm:text-lg font-bold text-foreground">{notes.length}</span>
+              </div>
+            )}
+            {isViewEnabled("tasks") && (
+              <div className="flex justify-between items-center">
+                <span className="text-xs sm:text-sm text-muted-foreground">Total Tasks</span>
+                <span className="text-base sm:text-lg font-bold text-foreground">{tasks.length}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center">
               <span className="text-xs sm:text-sm text-muted-foreground">Time Entries</span>
               <span className="text-base sm:text-lg font-bold text-foreground">{timeEntries.length}</span>

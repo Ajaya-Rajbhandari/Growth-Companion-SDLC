@@ -17,11 +17,13 @@ import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
+import { LOCKED_VIEWS, isViewEnabled } from "@/lib/feature-flags"
 
 export default function Home() {
-  const { activeView, isLoggedIn, authInitialized } = useAppStore(
+  const { activeView, setActiveView, isLoggedIn, authInitialized } = useAppStore(
     useShallow((state) => ({
       activeView: state.activeView,
+      setActiveView: state.setActiveView,
       isLoggedIn: state.isLoggedIn,
       authInitialized: state.authInitialized,
     })),
@@ -33,6 +35,13 @@ export default function Home() {
       router.push("/auth")
     }
   }, [authInitialized, isLoggedIn, router])
+
+  // Redirect to timesheet when a locked view is selected (e.g. from persisted state)
+  useEffect(() => {
+    if (LOCKED_VIEWS.includes(activeView as (typeof LOCKED_VIEWS)[number])) {
+      setActiveView("timesheet")
+    }
+  }, [activeView, setActiveView])
 
   if (!authInitialized || !isLoggedIn) {
     return null
@@ -54,12 +63,12 @@ export default function Home() {
         {/* Main Content - Now has full width without chat sidebar */}
         <main className="flex-1 p-2 sm:p-3 md:p-4 lg:p-5 overflow-x-hidden overflow-y-auto pb-36 lg:pb-8 w-full max-w-full [&>*]:max-w-full min-h-0">
           {activeView === "dashboard" && <DashboardView />}
-          {activeView === "tasks" && <TasksView />}
-          {activeView === "notes" && <NotesView />}
+          {activeView === "tasks" && isViewEnabled("tasks") && <TasksView />}
+          {activeView === "notes" && isViewEnabled("notes") && <NotesView />}
           {activeView === "timesheet" && <TimesheetView />}
           {activeView === "calendar" && <CalendarView />}
-          {activeView === "goals" && <GoalsView />}
-          {activeView === "habits" && <HabitsView />}
+          {activeView === "goals" && isViewEnabled("goals") && <GoalsView />}
+          {activeView === "habits" && isViewEnabled("habits") && <HabitsView />}
           {activeView === "profile" && <ProfileView />}
         </main>
       </div>

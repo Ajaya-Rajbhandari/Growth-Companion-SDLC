@@ -1150,9 +1150,9 @@ export async function POST(request: Request) {
         },
       }
     )
-    const { data: { session } } = await supabase.auth.getSession()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (!session) {
+    if (authError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
@@ -1172,7 +1172,7 @@ export async function POST(request: Request) {
 
     // 2. Rate limiting check (Placeholder: in production, use Redis or Supabase check)
     // For now, we'll just log the request
-    console.log(`[v0] Assistant request from user: ${session.user.id}`)
+    console.log(`[v0] Assistant request from user: ${user.id}`)
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: "Invalid messages format" }), {
@@ -1190,7 +1190,7 @@ export async function POST(request: Request) {
       const { data: feedbackData } = await supabase
         .from("chat_feedback")
         .select("feedback_type, feedback_text, created_at")
-        .eq("user_id", session.user.id)
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(10)
 
@@ -1212,7 +1212,7 @@ export async function POST(request: Request) {
         const { data: analyticsData } = await supabase
           .from("ai_usage_analytics")
           .select("tool_name, success")
-          .eq("user_id", session.user.id)
+          .eq("user_id", user.id)
           .order("created_at", { ascending: false })
           .limit(20)
 
@@ -1244,8 +1244,8 @@ export async function POST(request: Request) {
 
     if (!process.env.OPENAI_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable." }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+        JSON.stringify({ error: "OpenAI API key is not configured. Please set OPENAI_API_KEY in .env.local." }),
+        { status: 503, headers: { "Content-Type": "application/json" } }
       )
     }
 
@@ -1351,7 +1351,7 @@ export async function POST(request: Request) {
                         ;(async () => {
                           try {
                             await supabase.from("ai_usage_analytics").insert({
-                              user_id: session.user.id,
+                              user_id: user.id,
                               tool_name: accumulated.name,
                               success: !toolResult.message.includes("Error"),
                               response_time_ms: responseTime,
@@ -1443,7 +1443,7 @@ export async function POST(request: Request) {
                 ;(async () => {
                   try {
                     await supabase.from("ai_usage_analytics").insert({
-                      user_id: session.user.id,
+                      user_id: user.id,
                       tool_name: accumulated.name,
                       success: !toolResult.message.includes("Error"),
                       response_time_ms: responseTime,

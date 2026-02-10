@@ -10,11 +10,21 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { BreakModePanel } from "./break-mode-panel" // Import the new component
 import { toast } from "@/components/ui/use-toast"
+import {
+  playNotificationSound,
+  stopNotificationSound,
+  getStoredSoundId,
+  setStoredSoundId,
+  unlockNotificationAudio,
+  SOUND_OPTIONS,
+  type NotificationSoundId,
+} from "@/lib/notification-sound"
 import {
   Play,
   Square,
@@ -33,6 +43,9 @@ import {
   FileSpreadsheet,
   Plus,
   Trash2,
+  ListTodo,
+  ClipboardList,
+  LayoutPanelTop,
 } from "lucide-react"
 import React from "react" // Added for React.Fragment
 
@@ -43,6 +56,21 @@ function formatTime(isoString: string): string {
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+function formatTimeHHMMSS(isoString: string): string {
+  const d = new Date(isoString)
+  const h = d.getHours()
+  const m = d.getMinutes()
+  const s = d.getSeconds()
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+}
+
+function formatDurationHHMMSS(totalMs: number): string {
+  const hours = Math.floor(totalMs / (1000 * 60 * 60))
+  const minutes = Math.floor((totalMs % (1000 * 60 * 60)) / (1000 * 60))
+  const seconds = Math.floor((totalMs % (1000 * 60)) / 1000)
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
 }
 
 function formatDate(dateString: string): string {
@@ -374,11 +402,23 @@ export function TimesheetView() {
   const [selectedBreak, setSelectedBreak] = useState<{ entryId: string; breakId: string; currentTitle?: string } | null>(null)
   const [breakTitleEdit, setBreakTitleEdit] = useState("")
   const [soundEnabled, setSoundEnabled] = useState(true)
+  const [notificationSoundId, setNotificationSoundId] = useState<NotificationSoundId>("default")
   const [breakEndedAlert, setBreakEndedAlert] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const v = localStorage.getItem("companion-sound-enabled")
+      if (v !== null) setSoundEnabled(v === "true")
+      setNotificationSoundId(getStoredSoundId())
+    } catch {}
+  }, [])
   const [editTaskDialogOpen, setEditTaskDialogOpen] = useState(false) // add state for edit dialog
   const [editTaskTitle, setEditTaskTitle] = useState("") // add state for edit input
   const [switchTaskDialogOpen, setSwitchTaskDialogOpen] = useState(false) // add state for switch dialog
   const [newTaskTitle, setNewTaskTitle] = useState("") // add state for new task input
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
 
   const [viewPeriod, setViewPeriod] = useState<ViewPeriod>("weekly")
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -403,20 +443,14 @@ export function TimesheetView() {
     return `${hrs}h ${mins}m`
   }
 
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioUnlockedRef = useRef(false)
   const lastUpdateRef = useRef<number>(Date.now())
   const autoClockedOutRef = useRef(false)
 
-  useEffect(() => {
-    audioRef.current = new Audio()
-    audioRef.current.src =
-      "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleRY/l9TejGQfCEWd2NuJYyEISZzX2opkIglKm9fbjGQhCEqc19qLZCEISZvX24xkIQhKnNfai2QhCEqb19uMZCEISZzX2otkIQhKm9fbjGQhCEmc19qLZCEISpvX24xkIQhJnNfai2QhCEqb19uMZCEISZzX2otkIQhKm9fbjGQhCEmc"
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
-      }
-    }
+  const unlockAudio = useCallback(() => {
+    if (audioUnlockedRef.current) return
+    audioUnlockedRef.current = true
+    unlockNotificationAudio()
   }, [])
 
   useEffect(() => {
@@ -425,20 +459,93 @@ export function TimesheetView() {
     }
   }, [overworkDialogOpen, overworkMinutesRequested])
 
+  const suggestTaskTitlesAbortRef = useRef<AbortController | null>(null)
+  const fetchTaskTitleSuggestions = useCallback(
+    async (draft: string) => {
+      suggestTaskTitlesAbortRef.current?.abort()
+      suggestTaskTitlesAbortRef.current = new AbortController()
+      setSuggestionsLoading(true)
+      const recentFromTemplates = getTopTemplates().slice(0, 8).map((t) => t.title)
+      const recentFromEntries = [...timeEntries]
+        .filter((e) => e.title && e.clockOut)
+        .reverse()
+        .slice(0, 12)
+        .map((e) => e.title as string)
+      const recentTitles = Array.from(new Set([...recentFromTemplates, ...recentFromEntries]))
+      try {
+        const res = await fetch("/api/suggest-task-titles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            draft: draft.slice(0, 200),
+            recentTitles,
+            currentTask: currentEntry?.title || undefined,
+          }),
+          signal: suggestTaskTitlesAbortRef.current.signal,
+        })
+        const data = await res.json()
+        if (Array.isArray(data.suggestions)) {
+          setAiSuggestions(data.suggestions)
+        }
+      } catch {
+        setAiSuggestions([])
+      } finally {
+        setSuggestionsLoading(false)
+        suggestTaskTitlesAbortRef.current = null
+      }
+    },
+    [timeEntries, currentEntry?.title, getTopTemplates],
+  )
+
+  useEffect(() => {
+    if (!switchTaskDialogOpen) return
+    setNewTaskTitle("")
+    setAiSuggestions([])
+    fetchTaskTitleSuggestions("")
+  }, [switchTaskDialogOpen, fetchTaskTitleSuggestions])
+
+  const draftSuggestionsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!switchTaskDialogOpen) return
+    if (draftSuggestionsDebounceRef.current) clearTimeout(draftSuggestionsDebounceRef.current)
+    const draft = newTaskTitle.trim()
+    if (draft.length < 2) return
+    draftSuggestionsDebounceRef.current = setTimeout(() => {
+      fetchTaskTitleSuggestions(draft)
+      draftSuggestionsDebounceRef.current = null
+    }, 500)
+    return () => {
+      if (draftSuggestionsDebounceRef.current) clearTimeout(draftSuggestionsDebounceRef.current)
+    }
+  }, [switchTaskDialogOpen, newTaskTitle, fetchTaskTitleSuggestions])
+
   const playAlarm = useCallback(() => {
-    if (soundEnabled && audioRef.current) {
-      audioRef.current.loop = true
-      audioRef.current.play().catch(() => {})
+    if (soundEnabled) {
+      playNotificationSound(notificationSoundId, true)
     }
     setBreakEndedAlert(true)
-  }, [soundEnabled])
+    toast({
+      title: "Break time has ended",
+      description: "Click Resume to get back to work.",
+      duration: 10000,
+    })
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "granted") {
+        try {
+          const n = new Notification("Break ended — Companion", {
+            body: "Your break time is over. Click to return and resume work.",
+            icon: "/icon-192x192.png",
+          })
+          n.onclick = () => window.focus()
+        } catch {}
+      } else if (Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {})
+      }
+    }
+  }, [soundEnabled, notificationSoundId])
 
   const stopAlarm = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.currentTime = 0
-      audioRef.current.loop = false
-    }
+    stopNotificationSound()
     setBreakEndedAlert(false)
   }, [])
 
@@ -603,6 +710,55 @@ export function TimesheetView() {
     }
   }, [filteredEntries])
 
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], [])
+  const todayTimelineItems = useMemo(() => {
+    const entries = timeEntries.filter((e) => e.date === todayStr)
+    const withCurrent =
+      currentEntry && currentEntry.date === todayStr && !entries.some((e) => e.id === currentEntry.id)
+        ? [currentEntry, ...entries]
+        : entries
+    const items: { start: string; end?: string; label: string; type: "work" | "break" }[] = []
+    withCurrent
+      .sort((a, b) => new Date(a.clockIn).getTime() - new Date(b.clockIn).getTime())
+      .forEach((entry) => {
+        if (entry.subtasks && entry.subtasks.length > 0) {
+          entry.subtasks.forEach((sub) => {
+            items.push({
+              start: sub.clockIn,
+              end: sub.clockOut,
+              label: sub.title,
+              type: "work",
+            })
+          })
+          if (!entry.clockOut) {
+            const lastEnd = entry.subtasks[entry.subtasks.length - 1].clockOut
+            items.push({
+              start: lastEnd || entry.clockIn,
+              end: undefined,
+              label: entry.title || "Working",
+              type: "work",
+            })
+          }
+        } else {
+          items.push({
+            start: entry.clockIn,
+            end: entry.clockOut,
+            label: entry.title || "Work",
+            type: "work",
+          })
+        }
+        ;(entry.breaks || []).forEach((brk) => {
+          items.push({
+            start: brk.startTime,
+            end: brk.endTime,
+            label: getBreakTypeLabel(brk.type, brk.title),
+            type: "break",
+          })
+        })
+      })
+    return items.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+  }, [timeEntries, currentEntry, todayStr])
+
   // Handle clockIn with workTitle and save template
   const handleClockIn = () => {
     const title = workTitle.trim()
@@ -643,6 +799,7 @@ export function TimesheetView() {
 
   // Break type selection and management
   const handleStartBreak = async () => {
+    unlockAudio()
     const durations: Record<string, number> = {
       short: 15,
       lunch: 60,
@@ -682,6 +839,7 @@ export function TimesheetView() {
   }
 
   const handleEndBreak = async () => {
+    stopAlarm()
     try {
       await endBreak()
       toast({
@@ -966,7 +1124,95 @@ export function TimesheetView() {
     summaryWs["!cols"] = [{ wch: 20 }, { wch: 40 }]
     XLSX.utils.book_append_sheet(wb, summaryWs, "Summary")
 
-    // ===== SHEET 2: Detailed Entries =====
+    // ===== SHEET 2: Daily Log (Date | Day | Task Type | Start | End | Time) — one row per segment, end of row N = start of row N+1 =====
+    const dailyLogHeaders = ["Date", "Day", "Task Type", "Start", "End", "Time"]
+    const dailyLogRows: (string | number)[][] = []
+    const groupedByDate = groupEntriesByDate(filteredEntries)
+    const sortedDates = Object.keys(groupedByDate).sort((a, b) => a.localeCompare(b))
+
+    for (const dateKey of sortedDates) {
+      const entries = groupedByDate[dateKey]
+      const segments: { start: string; end: string; title: string }[] = []
+
+      for (const entry of entries) {
+        if (entry.subtasks && entry.subtasks.length > 0) {
+          for (const sub of entry.subtasks) {
+            if (sub.clockOut) {
+              segments.push({ start: sub.clockIn, end: sub.clockOut, title: sub.title })
+            }
+          }
+          if (entry.clockOut) {
+            const lastEnd = entry.subtasks[entry.subtasks.length - 1].clockOut
+            segments.push({
+              start: lastEnd || entry.clockIn,
+              end: entry.clockOut,
+              title: entry.title || "Work",
+            })
+          }
+        } else {
+          if (entry.clockOut) {
+            segments.push({
+              start: entry.clockIn,
+              end: entry.clockOut,
+              title: entry.title || "Work",
+            })
+          }
+        }
+        ;(entry.breaks || []).forEach((brk) => {
+          if (brk.endTime) {
+            segments.push({
+              start: brk.startTime,
+              end: brk.endTime,
+              title: getBreakTypeLabel(brk.type, brk.title),
+            })
+          }
+        })
+      }
+
+      segments.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+
+      const dateObj = new Date(dateKey)
+      const dayName = dateObj.toLocaleDateString("en-US", { weekday: "long" })
+      const dateFormatted = `${dateObj.getMonth() + 1}-${dateObj.getDate()}-${dateObj.getFullYear()}`
+      let dayTotalMs = 0
+
+      segments.forEach((seg, idx) => {
+        const startMs = new Date(seg.start).getTime()
+        const endMs = new Date(seg.end).getTime()
+        const durationMs = endMs - startMs
+        dayTotalMs += durationMs
+        const durationStr = formatDurationHHMMSS(durationMs)
+        dailyLogRows.push([
+          idx === 0 ? dateFormatted : "",
+          idx === 0 ? dayName : "",
+          seg.title,
+          formatTimeHHMMSS(seg.start),
+          formatTimeHHMMSS(seg.end),
+          durationStr,
+        ])
+      })
+
+      if (segments.length > 0) {
+        dailyLogRows.push(["", "", "", "", "Total", formatDurationHHMMSS(dayTotalMs)])
+      }
+    }
+
+    if (dailyLogRows.length === 0) {
+      dailyLogRows.push(["No time entries for this period", "", "", "", "", ""])
+    }
+
+    const dailyLogWs = XLSX.utils.aoa_to_sheet([dailyLogHeaders, ...dailyLogRows])
+    dailyLogWs["!cols"] = [
+      { wch: 12 }, // Date
+      { wch: 10 }, // Day
+      { wch: 40 }, // Task Type
+      { wch: 10 }, // Start
+      { wch: 10 }, // End
+      { wch: 10 }, // Time
+    ]
+    XLSX.utils.book_append_sheet(wb, dailyLogWs, "Daily Log")
+
+    // ===== SHEET 3: Detailed Entries =====
     const detailHeaders = [
       "Date",
       "Day",
@@ -1069,7 +1315,6 @@ export function TimesheetView() {
 
     // ===== SHEET 4: Daily Summary =====
     const dailySummaryHeaders = ["Date", "Day", "Total Hours", "Total Breaks (min)", "Sessions", "Tasks Completed"]
-    const groupedByDate = groupEntriesByDate(filteredEntries)
     const dailySummaryRows = Object.entries(groupedByDate).map(([date, entries]) => {
       const dateObj = new Date(date)
       const dayName = dateObj.toLocaleDateString("en-US", { weekday: "long" })
@@ -1241,19 +1486,78 @@ export function TimesheetView() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
           <div>
             <h2 className="text-lg sm:text-xl font-semibold text-foreground">Timesheet</h2>
-            <p className="text-xs text-foreground/70">Track your working hours automatically.</p>
+            <p className="text-xs text-foreground/70">Track your day, time-to-time. Log what you do so your hours are clear and traceable.</p>
           </div>
 
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              size="icon"
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              className="bg-transparent min-w-[44px] min-h-[44px]"
-              title={soundEnabled ? "Disable break alarm" : "Enable break alarm"}
+              className="gap-2 bg-transparent min-h-[44px]"
+              title="Open quick actions in a small window (clock in/out, log task)"
+              onClick={() => window.open("/widget", "companion-widget", "width=420,height=560,scrollbars=yes,resizable=yes")}
             >
-              {soundEnabled ? <Volume2 className="size-4" /> : <BellOff className="size-4" />}
+              <LayoutPanelTop className="size-4" />
+              <span className="hidden sm:inline">Widget</span>
             </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="bg-transparent min-w-[44px] min-h-[44px]"
+                  title="Sound & notification"
+                >
+                  {soundEnabled ? <Volume2 className="size-4" /> : <BellOff className="size-4" />}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-3" align="end">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">Break reminder</span>
+                    <Button
+                      variant={soundEnabled ? "secondary" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        unlockAudio()
+                        const next = !soundEnabled
+                        setSoundEnabled(next)
+                        try {
+                          localStorage.setItem("companion-sound-enabled", next ? "true" : "false")
+                        } catch {}
+                      }}
+                    >
+                      {soundEnabled ? "On" : "Off"}
+                    </Button>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Notification sound</p>
+                    <Select
+                      value={notificationSoundId}
+                      onValueChange={(v) => {
+                        const id = v as NotificationSoundId
+                        setNotificationSoundId(id)
+                        setStoredSoundId(id)
+                        unlockAudio()
+                        playNotificationSound(id, false)
+                        setTimeout(stopNotificationSound, 600)
+                      }}
+                    >
+                      <SelectTrigger className="h-9 w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SOUND_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Plays when your break ends.</p>
+                </div>
+              </PopoverContent>
+            </Popover>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="gap-2 bg-transparent min-h-[44px]">
@@ -1290,12 +1594,15 @@ export function TimesheetView() {
                 <Play className="h-4 w-4 flex-shrink-0" />
                 <span className="truncate">Start Your Work Day</span>
               </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Log what you&apos;re doing so your day is traceable (office rule). You can switch tasks anytime during the session.
+              </p>
             </CardHeader>
             <CardContent className="space-y-2 p-2 sm:p-3 md:p-4 w-full max-w-full overflow-hidden !px-2 sm:!px-3 md:!px-4">
               <div className="space-y-2">
-                <label className="text-xs sm:text-sm font-medium">What are you working on?</label>
+                <label className="text-xs sm:text-sm font-medium">What are you working on right now?</label>
                 <Input
-                  placeholder="e.g., Frontend development, Meeting, Code review..."
+                  placeholder="e.g., Team standup, Sprint planning, Code review, Deep work, Email..."
                   value={workTitle}
                   onChange={(e) => setWorkTitle(e.target.value)}
                   onKeyPress={(e) => e.key === "Enter" && handleClockIn()}
@@ -1531,15 +1838,18 @@ export function TimesheetView() {
                 )}
 
                 {!activeBreak && (
-                  // add task management buttons
-                  <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Log each activity when you switch so your day log stays accurate.
+                    </p>
+                    <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
                     <Button onClick={openEditTaskDialog} variant="outline" className="gap-2 bg-transparent w-full sm:w-auto min-h-[44px]">
                       <Clock className="h-4 w-4" />
                       Edit Task
                     </Button>
-                    <Button onClick={() => setSwitchTaskDialogOpen(true)} variant="outline" className="gap-2 w-full sm:w-auto min-h-[44px]">
-                      <Play className="h-4 w-4" />
-                      Switch Task
+                    <Button onClick={() => setSwitchTaskDialogOpen(true)} variant="default" className="gap-2 w-full sm:w-auto min-h-[44px]">
+                      <ClipboardList className="h-4 w-4" />
+                      Log new task
                     </Button>
                   {allowOverworkMinutes > 0 && (
                     <Button
@@ -1561,6 +1871,7 @@ export function TimesheetView() {
                       Clock Out
                     </Button>
                   </div>
+                  </>
                 )}
 
                   {activeBreak && (
@@ -1599,6 +1910,68 @@ export function TimesheetView() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* What I did today — office day log */}
+        {todayTimelineItems.length > 0 && (
+          <Card className="border-border bg-card w-full max-w-full overflow-hidden !px-0">
+            <CardHeader className="p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+              <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                <ListTodo className="size-4 sm:size-5 text-primary" />
+                What I did today
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Time-to-time log for the day. Switch task when you change activity to keep this accurate.
+              </p>
+            </CardHeader>
+            <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+              <ul className="space-y-2">
+                {todayTimelineItems.map((item, idx) => {
+                  const duration = item.end
+                    ? calculateDuration(item.start, item.end, 0)
+                    : item.type === "work"
+                      ? (() => {
+                          const totalMs = Math.max(0, Date.now() - new Date(item.start).getTime())
+                          return {
+                            hours: Math.floor(totalMs / (1000 * 60 * 60)),
+                            minutes: Math.floor((totalMs % (1000 * 60 * 60)) / (1000 * 60)),
+                            totalMs,
+                          }
+                        })()
+                      : null
+                  const durationStr = duration
+                    ? `${duration.hours}h ${duration.minutes}m`
+                    : item.end
+                      ? ""
+                      : "…"
+                  return (
+                    <li
+                      key={`${item.start}-${idx}`}
+                      className={cn(
+                        "flex items-center gap-2 sm:gap-3 py-2 px-3 rounded-lg text-sm",
+                        item.type === "break"
+                          ? "bg-amber-500/10 border border-amber-500/20"
+                          : "bg-muted/40 border border-border",
+                      )}
+                    >
+                      <span className="font-mono text-xs text-muted-foreground whitespace-nowrap w-16 sm:w-20">
+                        {formatTime(item.start)}
+                      </span>
+                      <span className="flex-1 min-w-0 font-medium truncate">{item.label}</span>
+                      {item.type === "break" && (
+                        <Coffee className="size-4 text-amber-500 flex-shrink-0" />
+                      )}
+                      {durationStr && (
+                        <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">
+                          {durationStr}
+                        </span>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 w-full max-w-full">
@@ -2954,12 +3327,43 @@ export function TimesheetView() {
         >
           <DialogContent className="bg-card text-foreground max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Switch to New Task</DialogTitle>
+              <DialogTitle>Log new task</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <p className="text-sm text-foreground/70">
-                Current task "{currentEntry?.title}" will be saved as completed
+                Current activity &quot;{currentEntry?.title}&quot; will be saved with its time. Pick a suggestion or type your own.
               </p>
+
+              {/* AI suggestions */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  Suggested for you
+                  {suggestionsLoading && (
+                    <span className="text-xs font-normal text-muted-foreground">Loading…</span>
+                  )}
+                </h3>
+                {aiSuggestions.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {aiSuggestions.map((title) => (
+                      <button
+                        key={title}
+                        type="button"
+                        onClick={() => setNewTaskTitle(title)}
+                        className={cn(
+                          "px-3 py-2 rounded-lg text-sm font-medium transition-colors border",
+                          newTaskTitle === title
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-primary/10 text-foreground border-primary/30 hover:bg-primary/20",
+                        )}
+                      >
+                        {title}
+                      </button>
+                    ))}
+                  </div>
+                ) : !suggestionsLoading && (
+                  <p className="text-xs text-muted-foreground">Suggestions appear here. Type a few words to get titles based on your input.</p>
+                )}
+              </div>
 
               {/* Recently used tasks */}
               {topTemplates.length > 0 && (
@@ -3019,16 +3423,16 @@ export function TimesheetView() {
                     <div className="w-full border-t border-border" />
                   </div>
                   <div className="relative flex justify-center text-xs">
-                    <span className="px-2 bg-card text-foreground/70">or create new task</span>
+                    <span className="px-2 bg-card text-foreground/70">or type your own</span>
                   </div>
                 </div>
               )}
 
               {/* Create new task input */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">New Task Description</label>
+                <label className="text-sm font-medium text-foreground">What are you doing next?</label>
                 <Input
-                  placeholder="Enter a new task description"
+                  placeholder="e.g., Team standup, Code review, Email, Deep work, Meeting..."
                   value={newTaskTitle}
                   onChange={(e) => setNewTaskTitle(e.target.value)}
                   maxLength={100}
@@ -3039,7 +3443,7 @@ export function TimesheetView() {
 
               <div className="flex gap-2">
                 <Button onClick={handleSwitchTask} disabled={!newTaskTitle.trim()} className="flex-1">
-                  Switch to Task
+                  Log & switch
                 </Button>
                 <Button onClick={() => setSwitchTaskDialogOpen(false)} variant="outline" className="flex-1">
                   Cancel
