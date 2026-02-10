@@ -79,31 +79,33 @@ export function MobileBottomNav() {
     },
   ]
 
+  const visibleItems = navItems.filter((item) => NAV_VIEW_IDS.includes(item.id))
+
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-sidebar/95 backdrop-blur-sm border-t border-sidebar-border pb-safe">
-      <div className="flex overflow-x-auto scrollbar-hide gap-1 px-1 py-2 max-h-[80px] snap-x snap-mandatory">
-        {navItems.filter((item) => NAV_VIEW_IDS.includes(item.id)).map((item) => {
+      <div className="flex items-stretch justify-around gap-0.5 px-1 py-2 min-h-[56px]">
+        {visibleItems.map((item) => {
           const isActive = activeView === item.id
           return (
             <button
               key={item.id}
               onClick={() => setActiveView(item.id)}
               className={cn(
-                "flex flex-col items-center justify-center gap-0.5 px-2 py-2 rounded-lg transition-colors min-h-[64px] min-w-[70px] flex-shrink-0 relative touch-manipulation snap-start",
+                "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg transition-colors max-w-[100px] relative touch-manipulation",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "text-muted-foreground active:text-sidebar-foreground active:bg-sidebar-accent/50",
               )}
               aria-label={item.label}
             >
-              <div className="relative">
-                <item.icon className="size-5" />
+              <div className="relative flex items-center justify-center">
+                <item.icon className="size-5 shrink-0" />
                 {item.badge && (
                   <span
                     className={cn(
-                      "absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold",
+                      "absolute -top-0.5 -right-1.5 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full text-[9px] font-semibold",
                       item.badge === "•"
-                        ? "bg-chart-2 text-chart-2 animate-pulse w-2 h-2"
+                        ? "bg-chart-2 text-chart-2 animate-pulse w-2 h-2 -right-1"
                         : "bg-primary text-primary-foreground",
                     )}
                   >
@@ -111,7 +113,7 @@ export function MobileBottomNav() {
                   </span>
                 )}
               </div>
-              <span className="text-[10px] font-medium leading-tight text-center line-clamp-1 max-w-full truncate">
+              <span className="text-[10px] font-medium leading-tight text-center line-clamp-1 w-full truncate">
                 {item.label}
               </span>
             </button>

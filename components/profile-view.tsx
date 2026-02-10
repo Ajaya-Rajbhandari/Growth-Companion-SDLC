@@ -394,7 +394,7 @@ export function ProfileView() {
         </CardContent>
       </Card>
 
-      <SeedTestDataButton />
+      {process.env.NODE_ENV === "development" && <SeedTestDataButton />}
 
       <Card className="bg-card border-border">
         <CardHeader>

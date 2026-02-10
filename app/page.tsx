@@ -61,7 +61,7 @@ export default function Home() {
         </div>
 
         {/* Main Content - Now has full width without chat sidebar */}
-        <main className="flex-1 p-2 sm:p-3 md:p-4 lg:p-5 overflow-x-hidden overflow-y-auto pb-36 lg:pb-8 w-full max-w-full [&>*]:max-w-full min-h-0">
+        <main className="flex-1 p-2 sm:p-3 md:p-4 lg:p-5 overflow-x-hidden overflow-y-auto pb-24 lg:pb-8 w-full max-w-full [&>*]:max-w-full min-h-0">
           {activeView === "dashboard" && <DashboardView />}
           {activeView === "tasks" && isViewEnabled("tasks") && <TasksView />}
           {activeView === "notes" && isViewEnabled("notes") && <NotesView />}

@@ -1,5 +1,7 @@
 // Service Worker for Growth Companion PWA
-const CACHE_NAME = 'growth-companion-v1'
+// Bump CACHE_NAME on deploy so activate clears old caches and fresh content loads
+const CACHE_NAME = 'growth-companion-v2'
+
 const urlsToCache = [
   '/',
   '/icon-light-32x32.png',
@@ -8,16 +10,12 @@ const urlsToCache = [
   '/icon.svg'
 ]
 
-// Install event - cache resources
+// Install event - cache shell resources
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(urlsToCache)
-      })
-      .catch((error) => {
-        console.error('Service Worker: Cache install failed', error)
-      })
+      .then((cache) => cache.addAll(urlsToCache))
+      .catch((err) => console.error('Service Worker: Cache install failed', err))
   )
   self.skipWaiting()
 })
@@ -25,27 +23,27 @@ self.addEventListener('install', (event) => {
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName)
-          }
-        })
+    caches.keys().then((cacheNames) =>
+      Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
       )
-    })
+    )
   )
   return self.clients.claim()
 })
 
-// Fetch event - serve from cache, fallback to network
-self.addEventListener('fetch', (event) => {
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') {
-    return
-  }
+// Prefer network for HTML/JS/CSS so updates apply without hard refresh; cache for offline
+function isDocumentOrScript(req) {
+  const url = new URL(req.url)
+  if (req.mode === 'navigate') return true
+  const path = url.pathname
+  return /\.(js|css|mjs)(\?|$)/.test(path) || path.startsWith('/_next/')
+}
 
-  // Skip API routes and external requests
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return
   if (
     event.request.url.includes('/api/') ||
     event.request.url.includes('supabase.co') ||
@@ -54,30 +52,38 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        return response || fetch(event.request).then((response) => {
-          // Don't cache if not a valid response
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response
+  // Network-first for documents and scripts so new deploys are seen on next load
+  if (isDocumentOrScript(event.request)) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            const clone = response.clone()
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
           }
-
-          // Clone the response
-          const responseToCache = response.clone()
-
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache)
-            })
-
           return response
         })
+        .catch(() => caches.match(event.request).then((r) => r || caches.match('/')))
+    )
+    return
+  }
+
+  // Cache-first for images and other assets
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached
+      return fetch(event.request).then((response) => {
+        if (response && response.status === 200 && response.type === 'basic') {
+          const clone = response.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
+        }
+        return response
       })
-      .catch(() => {
-        // Return offline page if available
-        return caches.match('/')
-      })
+    }).catch(() => caches.match('/'))
   )
+})
+
+// Allow client to request skipWaiting (e.g. when user taps "Refresh")
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting()
 })
