@@ -9,15 +9,22 @@ Personal productivity assistant built with Next.js (App Router) and Supabase. Th
 - Tailwind CSS + Radix UI primitives
 
 ## Local Setup
-1. Install dependencies: `pnpm install`
-2. Create `.env` with the required variables (see below).
-3. Run the dev server: `pnpm dev`
+1. Install dependencies: `npm ci --include=optional`
+2. Create `.env.local` with the required variables (see below).
+3. Run the dev server: `npm run dev`
 
 ## Scripts
-- `pnpm dev` - Run the development server
-- `pnpm build` - Build for production
-- `pnpm start` - Start production server
-- `pnpm lint` - Lint
+- `npm run dev` - Run the development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run typecheck` - Run TypeScript without emitting files
+- `npm run lint` - Lint
+- `npm test` - Run unit/integration tests
+- `npm run test:e2e` - Run Playwright smoke tests
+- `npm run check` - Run the local release gate: typecheck, lint, unit/integration tests, build, and diff whitespace check
+- `npm run check:full` - Run the full release gate including Playwright E2E
+
+> Playwright E2E needs Chromium system libraries. On Linux, run `npx playwright install --with-deps chromium` before `npm run test:e2e`. This requires sudo/root on many systems.
 
 ## Environment Variables
 Required for local development:

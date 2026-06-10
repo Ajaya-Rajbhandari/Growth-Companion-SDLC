@@ -73,6 +73,31 @@ async function mockSupabase(page: Page) {
       return
     }
 
+    if (table === "notes" && request.method() === "POST") {
+      const payload = request.postDataJSON() as {
+        title?: string
+        content?: string
+        category?: string
+        tags?: string[]
+        user_id?: string
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "note-created",
+          user_id: payload.user_id ?? user.id,
+          title: payload.title,
+          content: payload.content,
+          category: payload.category,
+          tags: payload.tags ?? [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }),
+      })
+      return
+    }
+
     const fixtures: Record<string, unknown[]> = {
       tasks: [
         {
@@ -104,7 +129,7 @@ async function mockSupabase(page: Page) {
   })
 }
 
-test("core app smoke: login, dashboard, and timesheet task switch", async ({ page }) => {
+test("core app smoke: login, dashboard, notes, and timesheet task switch", async ({ page }) => {
   await mockSupabase(page)
 
   await page.goto("/auth")
@@ -114,6 +139,14 @@ test("core app smoke: login, dashboard, and timesheet task switch", async ({ pag
 
   await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), E2E!/ })).toBeVisible()
   await expect(page.getByText("Currently Working")).toBeVisible()
+
+  await page.getByRole("button", { name: "Notes" }).click()
+  await expect(page.getByRole("heading", { name: "Notes" })).toBeVisible()
+  await page.getByRole("button", { name: "New Note" }).click()
+  await page.getByPlaceholder("Note title (max 100 characters)").fill("Smoke note")
+  await page.getByPlaceholder(/Write your note here/).fill("Created by the E2E smoke test.")
+  await page.getByRole("button", { name: "Save Note" }).click()
+  await expect(page.getByText("Smoke note").first()).toBeVisible()
 
   await page.getByRole("button", { name: "Timesheet Active" }).click()
   await expect(page.getByRole("heading", { name: "Timesheet" })).toBeVisible()
