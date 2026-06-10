@@ -15,6 +15,8 @@ The following migration files need to be run in order:
 2. `migrations/002_add_goals_table.sql` - Creates the goals table
 3. `migrations/003_add_urgency_to_tasks.sql` - Adds urgency column to tasks table
 4. `migrations/004_add_habits_tables.sql` - Creates habits and habit_logs tables
+5. `migrations/005_add_ai_analytics.sql` - Creates AI feedback and analytics tables
+6. `migrations/006_add_time_entry_subtasks.sql` - Adds subtask history storage to time_entries
 
 ## Steps to Run Migrations
 
@@ -33,7 +35,7 @@ The following migration files need to be run in order:
    - Paste it into the SQL Editor
    - Click "Run" or press `Ctrl+Enter` (Windows) / `Cmd+Enter` (Mac)
    - Wait for the success message
-   - Repeat for each migration file in order (001, 002, 003, 004)
+   - Repeat for each migration file in order (001, 002, 003, 004, 005, 006)
 
 ### Option 2: Using Supabase CLI (Advanced)
 
@@ -60,8 +62,11 @@ After running all migrations, verify the tables exist:
    - `goals`
    - `habits`
    - `habit_logs`
+   - `ai_feedback`
+   - `ai_insights`
 3. Check that the `tasks` table has a new `urgency` column
 4. Check that the `time_entries` table has a new `category` column
+5. Check that the `time_entries` table has a new `subtasks` column
 
 ## Troubleshooting
 
@@ -85,6 +90,8 @@ After running all migrations, verify the tables exist:
 2. ✅ `002_add_goals_table.sql`
 3. ✅ `003_add_urgency_to_tasks.sql`
 4. ✅ `004_add_habits_tables.sql`
+5. ✅ `005_add_ai_analytics.sql`
+6. ✅ `006_add_time_entry_subtasks.sql`
 
 ## After Migration
 
@@ -95,6 +102,7 @@ Once all migrations are complete:
    - Try creating a habit
    - Try adding a time category
    - Try setting task urgency
+   - Try switching tasks while clocked in
 
 2. **Verify RLS Policies**
    - All tables should have Row Level Security enabled

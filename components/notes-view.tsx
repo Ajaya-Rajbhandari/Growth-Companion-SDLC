@@ -138,7 +138,7 @@ export function NotesView() {
       const formatters = {
         bold: `**${selected}**`,
         italic: `*${selected}*`,
-        code: ```${selected}```,
+        code: `\`${selected}\``,
       }
 
       const newContent =

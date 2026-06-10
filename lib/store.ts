@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { supabase } from "./supabase"
+import { getLocalDateKey, parseLocalDateKey } from "./utils"
 
 // Helper function to convert Supabase errors to Error objects
 function handleSupabaseError(error: any, context: string): Error {
@@ -372,6 +373,7 @@ interface AppState {
 
   fetchInitialData: () => Promise<void>
   addTask: (task: Omit<Task, "id" | "createdAt">) => Promise<void>
+  updateTask: (id: string, updates: Partial<Task>) => Promise<void>
   toggleTask: (id: string, completed: boolean) => Promise<void>
   deleteTask: (id: string) => Promise<void>
   addNote: (note: Omit<Note, "id" | "createdAt" | "updatedAt">) => Promise<void>
@@ -384,9 +386,9 @@ interface AppState {
   toggleChat: () => void
   setIsChatOpen: (open: boolean) => void
   clearChatHistory: () => void
-  clockIn: (title?: string) => void // Update clockIn to accept optional title
-  clockOut: () => void
-  startBreak: (durationMinutes?: number, breakType?: "short" | "lunch" | "custom" | "fixed") => void
+  clockIn: (title?: string, category?: string) => Promise<void>
+  clockOut: () => Promise<void>
+  startBreak: (durationMinutes?: number, breakType?: "short" | "lunch" | "custom" | "fixed", title?: string) => void
   endBreak: () => Promise<void>
   addBreakTime: (minutes: number) => Promise<void>
   updateEntryNotes: (id: string, notes: string) => Promise<void>
@@ -411,7 +413,7 @@ interface AppState {
   updateWorkTemplate: (id: string, updates: Partial<WorkTemplate>) => Promise<void>
   getTopTemplates: () => WorkTemplate[]
   updateCurrentEntryTitle: (title: string) => void // add method to update current task title
-  switchTask: (newTitle: string) => Promise<void> // add method to switch tasks mid-session
+  switchTask: (newTitle: string, category?: string) => Promise<void>
   login: (email: string, password: string) => Promise<void>
   signup: (name: string, email: string, password: string) => Promise<void>
   loginWithGoogle: () => Promise<void>
@@ -456,7 +458,13 @@ interface AppState {
   deleteHabit: (id: string) => Promise<void>
   logHabit: (habitId: string, date: string, count?: number, notes?: string) => Promise<void>
   getHabitStreak: (habitId: string) => number
-  getHabitStats: (habitId: string) => { totalDays: number; completedDays: number; currentStreak: number; longestStreak: number }
+  getHabitStats: (habitId: string) => {
+    totalDays: number
+    completedDays: number
+    currentStreak: number
+    longestStreak: number
+    completionRate: number
+  }
   addTimeCategory: (category: Omit<TimeCategory, "id" | "createdAt">) => Promise<void>
   updateTimeCategory: (id: string, updates: Partial<TimeCategory>) => Promise<void>
   deleteTimeCategory: (id: string) => Promise<void>
@@ -471,7 +479,7 @@ export const useAppStore = create<AppState>()(
           title: "Review project requirements",
           completed: false,
           priority: "high",
-          dueDate: new Date().toISOString().split("T")[0],
+          dueDate: getLocalDateKey(),
           createdAt: new Date().toISOString(),
         },
         {
@@ -727,15 +735,19 @@ export const useAppStore = create<AppState>()(
 
         // Validation 2: Check if user has already clocked in today (even if clocked out)
         // Check both in-memory state AND database to ensure accuracy
-        const todayStr = new Date().toISOString().split("T")[0]
+        const todayStr = getLocalDateKey()
         const todayEntries = timeEntries.filter((e) => e.date === todayStr)
         
-        // Also check database directly to avoid race conditions
-        const { data: dbTodayEntries } = await supabase
-          .from("time_entries")
-          .select("id, date")
-          .eq("user_id", user.id)
-          .eq("date", todayStr)
+        // Also check database directly to avoid race conditions.
+        const timeEntriesTable = supabase.from("time_entries")
+        let dbTodayEntries: Array<{ id: string; date: string }> | null = null
+        if (typeof (timeEntriesTable as { select?: unknown }).select === "function") {
+          const { data } = await timeEntriesTable
+            .select("id, date")
+            .eq("user_id", user.id)
+            .eq("date", todayStr)
+          dbTodayEntries = data || null
+        }
         
         const hasTodayEntry = (todayEntries.length > 0) || (dbTodayEntries && dbTodayEntries.length > 0)
         if (hasTodayEntry) {
@@ -772,7 +784,7 @@ export const useAppStore = create<AppState>()(
           category: category || null,
         }
 
-        const { data, error } = await supabase.from("time_entries").insert({
+        const { data, error } = await timeEntriesTable.insert({
           ...entry,
           user_id: user.id,
         }).select().single()
@@ -1002,16 +1014,19 @@ export const useAppStore = create<AppState>()(
         }
       },
       deleteTimeEntry: async (id) => {
+        const { currentEntry } = get()
         const { error } = await supabase.from("time_entries").delete().eq("id", id)
         if (error) throw error
         set((state) => ({
           timeEntries: state.timeEntries.filter((e) => e.id !== id),
+          currentEntry: state.currentEntry?.id === id ? null : state.currentEntry,
+          activeBreak: currentEntry?.id === id ? null : state.activeBreak,
         }))
       },
       getTimesheetStatus: () => {
         const state = get()
         const today = new Date()
-        const todayStr = today.toISOString().split("T")[0]
+        const todayStr = getLocalDateKey(today)
 
         // Calculate today's hours
         const todayEntries = state.timeEntries.filter((e) => e.date === todayStr)
@@ -1036,9 +1051,12 @@ export const useAppStore = create<AppState>()(
 
         // Calculate weekly hours
         const dayOfWeek = today.getDay()
-        const weekStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - dayOfWeek))
+        const weekStart = new Date(today)
+        weekStart.setDate(today.getDate() - dayOfWeek)
+        weekStart.setHours(0, 0, 0, 0)
+        const weekStartKey = getLocalDateKey(weekStart)
 
-        const weekEntries = state.timeEntries.filter((e) => new Date(e.date) >= weekStart)
+        const weekEntries = state.timeEntries.filter((e) => e.date >= weekStartKey)
         let weeklyHours = weekEntries.reduce((total, entry) => {
           if (entry.clockOut) {
             const start = new Date(entry.clockIn).getTime()
@@ -1080,7 +1098,7 @@ export const useAppStore = create<AppState>()(
       getTodayWorkStats: () => {
         const state = get()
         const today = new Date()
-        const todayStr = today.toISOString().split("T")[0]
+        const todayStr = getLocalDateKey(today)
 
         const todayEntries = state.timeEntries.filter((e) => e.date === todayStr)
         let todayMinutes = todayEntries.reduce((total, entry) => {
@@ -1103,8 +1121,11 @@ export const useAppStore = create<AppState>()(
 
         // Weekly totals
         const dayOfWeek = today.getDay()
-        const weekStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - dayOfWeek))
-        const weekEntries = state.timeEntries.filter((e) => new Date(e.date) >= weekStart)
+        const weekStart = new Date(today)
+        weekStart.setDate(today.getDate() - dayOfWeek)
+        weekStart.setHours(0, 0, 0, 0)
+        const weekStartKey = getLocalDateKey(weekStart)
+        const weekEntries = state.timeEntries.filter((e) => e.date >= weekStartKey)
         let weeklyMinutes = weekEntries.reduce((total, entry) => {
           if (entry.clockOut) {
             const start = new Date(entry.clockIn).getTime()
@@ -1114,7 +1135,7 @@ export const useAppStore = create<AppState>()(
           }
           return total
         }, 0)
-        if (state.currentEntry && !state.activeBreak && new Date(state.currentEntry.date) >= weekStart) {
+        if (state.currentEntry && !state.activeBreak && state.currentEntry.date >= weekStartKey) {
           const start = new Date(state.currentEntry.clockIn).getTime()
           const now = Date.now()
           const breakMs = state.currentEntry.breakMinutes * 60 * 1000
@@ -1144,8 +1165,8 @@ export const useAppStore = create<AppState>()(
         // Weekly catch-up: sum deficits for days in this week relative to base limit
         const weekDayDeficits = Array.from({ length: dayOfWeek + 1 }).reduce<number>((acc, _, idx) => {
           const d = new Date(weekStart)
-          d.setUTCDate(d.getUTCDate() + idx)
-          const dateKey = d.toISOString().split("T")[0]
+          d.setDate(d.getDate() + idx)
+          const dateKey = getLocalDateKey(d)
           const dayEntries = state.timeEntries.filter((e) => e.date === dateKey)
           let minutes = dayEntries.reduce((total, entry) => {
             if (entry.clockOut) {
@@ -1183,7 +1204,7 @@ export const useAppStore = create<AppState>()(
 
       getTodayTimeEntries: () => {
         const state = get()
-        const todayStr = new Date().toISOString().split("T")[0]
+        const todayStr = getLocalDateKey()
         return state.timeEntries.filter((e) => e.date === todayStr)
       },
 
@@ -1908,7 +1929,7 @@ export const useAppStore = create<AppState>()(
         today.setHours(0, 0, 0, 0)
 
         for (let i = 0; i < habitLogsForHabit.length; i++) {
-          const logDate = new Date(habitLogsForHabit[i].date)
+          const logDate = parseLocalDateKey(habitLogsForHabit[i].date)
           logDate.setHours(0, 0, 0, 0)
 
           const expectedDate = new Date(today)
@@ -1955,6 +1976,7 @@ export const useAppStore = create<AppState>()(
           completedDays,
           currentStreak,
           longestStreak,
+          completionRate: totalDays > 0 ? Math.round((completedDays / totalDays) * 100) : 0,
         }
       },
 

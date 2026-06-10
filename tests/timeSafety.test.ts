@@ -1,4 +1,5 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { getLocalDateKey, parseLocalDateKey } from "../lib/utils"
 
 // Ensure Supabase client can initialize in tests
 process.env.NEXT_PUBLIC_SUPABASE_URL ||= "https://example.supabase.local"
@@ -98,15 +99,16 @@ describe("time safety calculations", () => {
   })
 
   it("honors grace + overwork and hits hard cap", () => {
-    // Tue Jan 2, 2024 20:00 UTC
-    vi.setSystemTime(new Date("2024-01-02T20:00:00.000Z"))
+    // Tue Jan 2, 2024 during local business hours
+    vi.setSystemTime(new Date("2024-01-02T12:00:00.000Z"))
+    const todayStr = getLocalDateKey()
 
     useAppStore.setState((state) => ({
       ...state,
       timeEntries: [
         makeEntry({
           id: "e1",
-          date: "2024-01-02",
+          date: todayStr,
           clockIn: "2024-01-02T09:00:00.000Z",
           clockOut: "2024-01-02T19:00:00.000Z", // 10h = 600m
           breakMinutes: 0,
@@ -129,10 +131,10 @@ describe("time safety calculations", () => {
     // Sunday Jan 7, 2024 16:00 UTC (dayOfWeek = 0, only today considered)
     vi.setSystemTime(new Date("2024-01-07T16:00:00.000Z"))
 
-    const todayStr = new Date().toISOString().split("T")[0]
-    const baseDate = new Date(todayStr + "T00:00:00.000Z")
-    const clockIn = new Date(Date.UTC(baseDate.getUTCFullYear(), baseDate.getUTCMonth(), baseDate.getUTCDate(), 9, 0)).toISOString()
-    const clockOut = new Date(Date.UTC(baseDate.getUTCFullYear(), baseDate.getUTCMonth(), baseDate.getUTCDate(), 14, 0)).toISOString()
+    const todayStr = getLocalDateKey()
+    const baseDate = parseLocalDateKey(todayStr)
+    const clockIn = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 9, 0).toISOString()
+    const clockOut = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 14, 0).toISOString()
 
     useAppStore.setState((state) => ({
       ...state,

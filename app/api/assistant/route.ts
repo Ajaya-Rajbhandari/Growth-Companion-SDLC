@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
+import { getLocalDateKey } from "@/lib/utils"
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -153,6 +154,12 @@ CRITICAL TOOL SELECTION RULES:
    Step 2: Is this about ONE specific feature or MULTIPLE features?
    Step 3: Which tool matches this intent?
    Step 4: Call that specific tool, NOT a general summary tool`
+
+function getStateTodayKey(state: any): string {
+  return typeof state?.todayKey === "string" && /^\d{4}-\d{2}-\d{2}$/.test(state.todayKey)
+    ? state.todayKey
+    : getLocalDateKey()
+}
 
 const tools = [
   {
@@ -638,7 +645,7 @@ function executeTool(
       }
 
       case "getTimesheetStatus": {
-        const today = new Date().toISOString().split("T")[0]
+        const today = getStateTodayKey(state)
         const todayEntries = (state.timeEntries || []).filter((entry: { date: string }) => entry.date === today)
 
         let todayHours = todayEntries.reduce(
@@ -655,7 +662,7 @@ function executeTool(
 
         if (state.currentEntry) {
           const currentEntry = state.currentEntry as { clockIn: string; breakMinutes?: number; date?: string }
-          const entryDate = currentEntry.date || new Date(currentEntry.clockIn).toISOString().split("T")[0]
+          const entryDate = currentEntry.date || getLocalDateKey(new Date(currentEntry.clockIn))
           if (entryDate === today) {
             const start = new Date(currentEntry.clockIn).getTime()
             const diffMs = Date.now() - start - (currentEntry.breakMinutes || 0) * 60 * 1000
@@ -678,7 +685,7 @@ function executeTool(
           (t: { priority: string; completed: boolean }) => t.priority === "high" && !t.completed,
         ).length
 
-        const today = new Date().toISOString().split("T")[0]
+        const today = getStateTodayKey(state)
         const todayEntries = (state.timeEntries || []).filter((entry: { date: string }) => entry.date === today)
 
         let todayHours = todayEntries.reduce(
@@ -695,7 +702,7 @@ function executeTool(
 
         if (state.currentEntry) {
           const currentEntry = state.currentEntry as { clockIn: string; breakMinutes?: number; date?: string }
-          const entryDate = currentEntry.date || new Date(currentEntry.clockIn).toISOString().split("T")[0]
+          const entryDate = currentEntry.date || getLocalDateKey(new Date(currentEntry.clockIn))
           if (entryDate === today) {
             const start = new Date(currentEntry.clockIn).getTime()
             const diffMs = Date.now() - start - (currentEntry.breakMinutes || 0) * 60 * 1000
@@ -1001,7 +1008,7 @@ function executeTool(
         if (!habitId) return { message: "Error: Habit ID is required" }
         const habit = (state.habits || []).find((h: { id: string }) => h.id === habitId)
         if (!habit) return { message: "Error: Habit not found" }
-        const logDate = date || new Date().toISOString().split("T")[0]
+        const logDate = date || getStateTodayKey(state)
         return {
           message: `Habit "${habit.title}" logged for ${logDate}`,
           action: { type: "logHabit", payload: { habitId, date: logDate, count: count || 1 } },
@@ -1055,7 +1062,7 @@ function executeTool(
           date: string
           count: number
         }>
-        const today = new Date().toISOString().split("T")[0]
+        const today = getStateTodayKey(state)
         const todayLogs = habitLogs.filter((log) => log.date === today)
 
         // Calculate streaks (simplified - would need proper streak calculation from store)
@@ -1074,7 +1081,7 @@ function executeTool(
           startDate?: string
           endDate?: string
         }
-        const targetDate = date || new Date().toISOString().split("T")[0]
+        const targetDate = date || getStateTodayKey(state)
         const tasks = (state.tasks || []) as Array<{ title: string; dueDate?: string; completed: boolean }>
         const timeEntries = (state.timeEntries || []) as Array<{ date: string; clockIn: string }>
         const goals = (state.goals || []) as Array<{ title: string; targetDate?: string }>

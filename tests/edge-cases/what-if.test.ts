@@ -71,17 +71,12 @@ describe("What If Scenarios - Edge Cases", () => {
       const { currentEntry: firstEntry } = useAppStore.getState()
       expect(firstEntry).not.toBeNull()
 
-      // Try to clock in again
-      // Note: The implementation may allow multiple clock-ins or prevent them
-      // This test verifies the behavior
-      await clockIn("Second Task")
-      
-      // Verify behavior - implementation may allow or prevent double clock-in
+      await expect(clockIn("Second Task")).rejects.toThrow("already have an active work session")
+
       const { currentEntry, timeEntries } = useAppStore.getState()
-      // If implementation prevents double clock-in, currentEntry should still be "First Task"
-      // If it allows, currentEntry should be "Second Task"
-      // Both behaviors are valid - test just verifies something happens
       expect(currentEntry).not.toBeNull()
+      expect(currentEntry?.title).toBe("First Task")
+      expect(timeEntries).toHaveLength(1)
     })
   })
 

@@ -75,7 +75,7 @@ export const mockSupabase = {
 }
 
 // Mock crypto.randomUUID - use spy instead of replacing entire crypto object
-if (typeof global.crypto !== "undefined" && global.crypto.randomUUID) {
+if (typeof global.crypto !== "undefined" && typeof global.crypto.randomUUID === "function") {
   vi.spyOn(global.crypto, "randomUUID").mockImplementation(
     () => "test-uuid-" + Math.random().toString(36).substring(7),
   )

@@ -165,7 +165,6 @@ export function GoalsView() {
     try {
       await addMilestone(selectedGoalForMilestone.id, {
         title: newMilestoneTitle.trim(),
-        completed: false,
         targetDate: newMilestoneDate || undefined,
       })
       toast({

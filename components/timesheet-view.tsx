@@ -13,7 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
+import { cn, getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
 import { BreakModePanel } from "./break-mode-panel" // Import the new component
 import { toast } from "@/components/ui/use-toast"
 import {
@@ -74,7 +74,7 @@ function formatDurationHHMMSS(totalMs: number): string {
 }
 
 function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("en-US", {
+  return parseDisplayDate(dateString).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -82,7 +82,7 @@ function formatDate(dateString: string): string {
 }
 
 function formatFullDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("en-US", {
+  return parseDisplayDate(dateString).toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -101,6 +101,10 @@ function calculateDuration(
   const hours = Math.floor(diffMs / (1000 * 60 * 60))
   const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
   return { hours, minutes, totalMs: diffMs }
+}
+
+function parseDisplayDate(value: string): Date {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalDateKey(value) : new Date(value)
 }
 
 function formatDuration(hours: number, minutes: number): string {
@@ -190,7 +194,7 @@ function getEndOfYear(date: Date): Date {
 function getPeriodLabel(date: Date, period: ViewPeriod): string {
   switch (period) {
     case "daily":
-      return formatFullDate(date.toISOString())
+      return formatFullDate(getLocalDateKey(date))
     case "weekly": {
       const start = getStartOfWeek(date)
       const end = getEndOfWeek(date)
@@ -248,7 +252,7 @@ function filterEntriesByPeriod(entries: TimeEntry[], date: Date, period: ViewPer
   }
 
   return entries.filter((entry) => {
-    const entryDate = new Date(entry.date)
+    const entryDate = parseLocalDateKey(entry.date)
     return entryDate >= start && entryDate <= end
   })
 }
@@ -270,9 +274,9 @@ function groupEntriesByDate(entries: TimeEntry[]): Record<string, TimeEntry[]> {
 const groupEntriesByWeek = (entries: TimeEntry[]): Record<string, TimeEntry[]> => {
   return entries.reduce(
     (groups, entry) => {
-      const date = new Date(entry.date)
+      const date = parseLocalDateKey(entry.date)
       const weekStart = getStartOfWeek(date)
-      const weekKey = weekStart.toISOString().split("T")[0]
+      const weekKey = getLocalDateKey(weekStart)
       if (!groups[weekKey]) {
         groups[weekKey] = []
       }
@@ -286,7 +290,7 @@ const groupEntriesByWeek = (entries: TimeEntry[]): Record<string, TimeEntry[]> =
 const groupEntriesByMonth = (entries: TimeEntry[]): Record<string, Record<string, TimeEntry[]>> => {
   return entries.reduce(
     (months, entry) => {
-      const date = new Date(entry.date)
+      const date = parseLocalDateKey(entry.date)
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
       if (!months[monthKey]) {
         months[monthKey] = {}
@@ -305,7 +309,7 @@ const groupEntriesByMonth = (entries: TimeEntry[]): Record<string, Record<string
 const groupEntriesByYear = (entries: TimeEntry[]): Record<string, Record<string, Record<string, TimeEntry[]>>> => {
   return entries.reduce(
     (years, entry) => {
-      const date = new Date(entry.date)
+      const date = parseLocalDateKey(entry.date)
       const year = date.getFullYear().toString()
       if (!years[year]) {
         years[year] = {}
@@ -649,7 +653,7 @@ export function TimesheetView() {
 
     // Add current entry if it's in the filtered date range and still active
     if (currentEntry && !currentEntry.clockOut) {
-      const entryDate = new Date(currentEntry.date)
+      const entryDate = parseLocalDateKey(currentEntry.date)
       let start: Date, end: Date
 
       switch (viewPeriod) {
@@ -688,7 +692,7 @@ export function TimesheetView() {
   }, [filteredEntries])
 
   const sortedDates = useMemo(() => {
-    return Object.keys(groupedEntries).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+    return Object.keys(groupedEntries).sort((a, b) => b.localeCompare(a))
   }, [groupedEntries])
 
   const periodStats = useMemo(() => {
@@ -710,7 +714,7 @@ export function TimesheetView() {
     }
   }, [filteredEntries])
 
-  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], [])
+  const todayStr = useMemo(() => getLocalDateKey(), [])
   const todayTimelineItems = useMemo(() => {
     const entries = timeEntries.filter((e) => e.date === todayStr)
     const withCurrent =
@@ -766,6 +770,8 @@ export function TimesheetView() {
     if (title) {
       clockIn(title, category)
         .then(() => {
+          setWorkTitle("")
+          setSelectedCategory("none")
           toast({
             title: "Clocked in",
             description: `Started "${title}".`,
@@ -777,12 +783,11 @@ export function TimesheetView() {
             description: error instanceof Error ? error.message : "Unable to start session.",
           })
         })
-      setWorkTitle("")
-      setSelectedCategory("none")
       return
     }
     clockIn(undefined, category)
       .then(() => {
+        setSelectedCategory("none")
         toast({
           title: "Clocked in",
           description: "Work session started.",
@@ -794,7 +799,6 @@ export function TimesheetView() {
           description: error instanceof Error ? error.message : "Unable to start session.",
         })
       })
-    setSelectedCategory("none")
   }
 
   // Break type selection and management
@@ -858,10 +862,8 @@ export function TimesheetView() {
   const handleSaveTemplate = () => {
     if (workTitle.trim() && templateName.trim()) {
       addWorkTemplate({
-        id: crypto.randomUUID(),
         title: templateName,
         description: workTitle,
-        usageCount: 0,
       })
       setTemplateName("")
       setShowTemplateDialog(false)
@@ -1049,7 +1051,7 @@ export function TimesheetView() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.setAttribute("href", url)
-    link.setAttribute("download", `timesheet-${viewPeriod}-${selectedDate.toISOString().split("T")[0]}.csv`)
+    link.setAttribute("download", `timesheet-${viewPeriod}-${getLocalDateKey(selectedDate)}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -1078,19 +1080,25 @@ export function TimesheetView() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.setAttribute("href", url)
-    link.setAttribute("download", `timesheet-${viewPeriod}-${selectedDate.toISOString().split("T")[0]}.json`)
+    link.setAttribute("download", `timesheet-${viewPeriod}-${getLocalDateKey(selectedDate)}.json`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
   }
 
-  // ADDED EXCEL EXPORT FUNCTION
   const exportToExcel = async () => {
-    // Dynamically import xlsx library
-    const XLSX = await import("xlsx")
+    const ExcelJS = await import("exceljs")
+    const workbook = new ExcelJS.Workbook()
+    workbook.creator = "Growth Companion"
+    workbook.created = new Date()
 
-    // Create workbook
-    const wb = XLSX.utils.book_new()
+    const addWorksheet = (name: string, rows: (string | number | null)[][], widths: number[]) => {
+      const worksheet = workbook.addWorksheet(name)
+      worksheet.addRows(rows)
+      worksheet.columns = widths.map((width) => ({ width }))
+      worksheet.getRow(1).font = { bold: true }
+      return worksheet
+    }
 
     // Get user info
     const userName = useAppStore.getState().user?.name || "Unknown"
@@ -1119,10 +1127,7 @@ export function TimesheetView() {
       ],
     ]
 
-    const summaryWs = XLSX.utils.aoa_to_sheet(summaryData)
-    // Set column widths for summary
-    summaryWs["!cols"] = [{ wch: 20 }, { wch: 40 }]
-    XLSX.utils.book_append_sheet(wb, summaryWs, "Summary")
+    addWorksheet("Summary", summaryData, [20, 40])
 
     // ===== SHEET 2: Daily Log (Date | Day | Task Type | Start | End | Time) — one row per segment, end of row N = start of row N+1 =====
     const dailyLogHeaders = ["Date", "Day", "Task Type", "Start", "End", "Time"]
@@ -1171,7 +1176,7 @@ export function TimesheetView() {
 
       segments.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
 
-      const dateObj = new Date(dateKey)
+      const dateObj = parseLocalDateKey(dateKey)
       const dayName = dateObj.toLocaleDateString("en-US", { weekday: "long" })
       const dateFormatted = `${dateObj.getMonth() + 1}-${dateObj.getDate()}-${dateObj.getFullYear()}`
       let dayTotalMs = 0
@@ -1201,16 +1206,7 @@ export function TimesheetView() {
       dailyLogRows.push(["No time entries for this period", "", "", "", "", ""])
     }
 
-    const dailyLogWs = XLSX.utils.aoa_to_sheet([dailyLogHeaders, ...dailyLogRows])
-    dailyLogWs["!cols"] = [
-      { wch: 12 }, // Date
-      { wch: 10 }, // Day
-      { wch: 40 }, // Task Type
-      { wch: 10 }, // Start
-      { wch: 10 }, // End
-      { wch: 10 }, // Time
-    ]
-    XLSX.utils.book_append_sheet(wb, dailyLogWs, "Daily Log")
+    addWorksheet("Daily Log", [dailyLogHeaders, ...dailyLogRows], [12, 10, 40, 10, 10, 10])
 
     // ===== SHEET 3: Detailed Entries =====
     const detailHeaders = [
@@ -1226,7 +1222,7 @@ export function TimesheetView() {
     ]
 
     const detailRows = filteredEntries.map((entry) => {
-      const date = new Date(entry.date)
+      const date = parseLocalDateKey(entry.date)
       const dayName = date.toLocaleDateString("en-US", { weekday: "long" })
       const duration = calculateDuration(entry.clockIn, entry.clockOut, entry.breakMinutes)
       const hours = entry.clockOut
@@ -1260,20 +1256,7 @@ export function TimesheetView() {
       "",
     ])
 
-    const detailWs = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailRows])
-    // Set column widths
-    detailWs["!cols"] = [
-      { wch: 12 }, // Date
-      { wch: 12 }, // Day
-      { wch: 30 }, // Task
-      { wch: 12 }, // Clock In
-      { wch: 12 }, // Clock Out
-      { wch: 15 }, // Break
-      { wch: 15 }, // Duration
-      { wch: 12 }, // Status
-      { wch: 30 }, // Notes
-    ]
-    XLSX.utils.book_append_sheet(wb, detailWs, "Detailed Entries")
+    addWorksheet("Detailed Entries", [detailHeaders, ...detailRows], [12, 12, 30, 12, 12, 15, 15, 12, 30])
 
     // ===== SHEET 3: Break Details =====
     const breakHeaders = ["Date", "Task", "Break Type", "Start Time", "End Time", "Duration (min)"]
@@ -1302,21 +1285,12 @@ export function TimesheetView() {
       breakRows.push(["No breaks recorded for this period", "", "", "", "", ""])
     }
 
-    const breakWs = XLSX.utils.aoa_to_sheet([breakHeaders, ...breakRows])
-    breakWs["!cols"] = [
-      { wch: 12 }, // Date
-      { wch: 30 }, // Task
-      { wch: 12 }, // Type
-      { wch: 12 }, // Start
-      { wch: 12 }, // End
-      { wch: 15 }, // Duration
-    ]
-    XLSX.utils.book_append_sheet(wb, breakWs, "Break Details")
+    addWorksheet("Break Details", [breakHeaders, ...breakRows], [12, 30, 12, 12, 12, 15])
 
     // ===== SHEET 4: Daily Summary =====
     const dailySummaryHeaders = ["Date", "Day", "Total Hours", "Total Breaks (min)", "Sessions", "Tasks Completed"]
     const dailySummaryRows = Object.entries(groupedByDate).map(([date, entries]) => {
-      const dateObj = new Date(date)
+      const dateObj = parseLocalDateKey(date)
       const dayName = dateObj.toLocaleDateString("en-US", { weekday: "long" })
       const totalHours = calculateTotalHours(entries)
       const totalBreaks = entries.reduce((sum, e) => sum + (e.breakMinutes || 0), 0)
@@ -1325,9 +1299,7 @@ export function TimesheetView() {
       return [date, dayName, `${totalHours.toFixed(2)}`, totalBreaks, entries.length, completedTasks]
     })
 
-    const dailyWs = XLSX.utils.aoa_to_sheet([dailySummaryHeaders, ...dailySummaryRows])
-    dailyWs["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 10 }, { wch: 15 }]
-    XLSX.utils.book_append_sheet(wb, dailyWs, "Daily Summary")
+    addWorksheet("Daily Summary", [dailySummaryHeaders, ...dailySummaryRows], [12, 12, 12, 18, 10, 15])
 
     // ===== SHEET 5: Subtasks (if any) =====
     const subtaskHeaders = ["Date", "Main Task", "Subtask", "Start Time", "End Time", "Duration"]
@@ -1356,13 +1328,21 @@ export function TimesheetView() {
       subtaskRows.push(["No subtasks recorded for this period", "", "", "", "", ""])
     }
 
-    const subtaskWs = XLSX.utils.aoa_to_sheet([subtaskHeaders, ...subtaskRows])
-    subtaskWs["!cols"] = [{ wch: 12 }, { wch: 25 }, { wch: 25 }, { wch: 12 }, { wch: 12 }, { wch: 12 }]
-    XLSX.utils.book_append_sheet(wb, subtaskWs, "Subtasks")
+    addWorksheet("Subtasks", [subtaskHeaders, ...subtaskRows], [12, 25, 25, 12, 12, 12])
 
-    // Generate and download file
-    const fileName = `timesheet-${viewPeriod}-${selectedDate.toISOString().split("T")[0]}.xlsx`
-    XLSX.writeFile(wb, fileName)
+    const fileName = `timesheet-${viewPeriod}-${getLocalDateKey(selectedDate)}.xlsx`
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer as BlobPart], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.setAttribute("href", url)
+    link.setAttribute("download", fileName)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   // Calculate stats for current period
@@ -1377,12 +1357,12 @@ export function TimesheetView() {
   const today = new Date()
   const weekStart = getStartOfWeek(today)
   const thisWeekEntries = timeEntries.filter((entry) => {
-    const entryDate = new Date(entry.date)
+    const entryDate = parseLocalDateKey(entry.date)
     return entryDate >= weekStart
   })
   const weeklyBreakMinutes = calculateTotalBreakMinutes(thisWeekEntries)
   const weekDates = new Set(thisWeekEntries.map((entry) => entry.date))
-  if (currentEntry && new Date(currentEntry.date) >= weekStart) {
+  if (currentEntry && parseLocalDateKey(currentEntry.date) >= weekStart) {
     weekDates.add(currentEntry.date)
   }
 
@@ -1430,7 +1410,7 @@ export function TimesheetView() {
     resetOverworkForToday,
   ])
   const activeDaysWeek = weekDates.size
-  const getDateKey = (date: Date) => date.toISOString().split("T")[0]
+  const getDateKey = getLocalDateKey
   const entryDates = new Set(timeEntries.map((entry) => entry.date))
   if (currentEntry) {
     entryDates.add(currentEntry.date)
@@ -1454,11 +1434,24 @@ export function TimesheetView() {
     }
   }
 
-  const handleSwitchTask = () => {
-    if (newTaskTitle.trim()) {
-      switchTask(newTaskTitle.trim())
-      setSwitchTaskDialogOpen(false)
-      setNewTaskTitle("")
+  const handleSwitchTask = async () => {
+    const title = newTaskTitle.trim()
+    if (title) {
+      try {
+        await switchTask(title)
+        setSwitchTaskDialogOpen(false)
+        setNewTaskTitle("")
+        toast({
+          title: "Task switched",
+          description: `Now working on "${title}".`,
+        })
+      } catch (error) {
+        toast({
+          title: "Switch failed",
+          description: error instanceof Error ? error.message : "Unable to switch task.",
+          variant: "destructive",
+        })
+      }
     }
   }
 
@@ -2501,11 +2494,11 @@ export function TimesheetView() {
                 {viewPeriod === "weekly" &&
                   // Use groupEntriesByWeek for weekly view
                   Object.entries(groupEntriesByWeek(filteredEntries))
-                    .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime()) // Sort weeks
+                    .sort(([a], [b]) => b.localeCompare(a)) // Sort weeks
                     .map(([weekStartKey, weekEntries]) => {
                       const weekTotalHours = calculateTotalHours(weekEntries)
                       const weekTotalBreakMinutes = calculateTotalBreakMinutes(weekEntries)
-                      const weekLabel = getPeriodLabel(new Date(weekStartKey), "weekly")
+                      const weekLabel = getPeriodLabel(parseLocalDateKey(weekStartKey), "weekly")
 
                       return (
                         <div key={weekStartKey} className="space-y-2">
@@ -2519,7 +2512,7 @@ export function TimesheetView() {
                             {/* Mobile Card Layout */}
                             <div className="block sm:hidden space-y-2 p-2 sm:p-3 w-full max-w-full">
                               {Object.entries(groupEntriesByDate(weekEntries))
-                                .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+                                .sort(([a], [b]) => b.localeCompare(a))
                                 .map(([date, dateEntries]) => {
                                   const dayTotal = calculateTotalHours(dateEntries)
                                   const dayBreaks = calculateTotalBreakMinutes(dateEntries)
@@ -2687,7 +2680,7 @@ export function TimesheetView() {
                                 </TableHeader>
                                 <TableBody>
                                   {Object.entries(groupEntriesByDate(weekEntries))
-                                    .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime()) // Sort days within the week
+                                    .sort(([a], [b]) => b.localeCompare(a)) // Sort days within the week
                                     .map(([date, dateEntries]) => {
                                       const dayTotal = calculateTotalHours(dateEntries)
                                       const dayBreaks = calculateTotalBreakMinutes(dateEntries)
@@ -3079,7 +3072,7 @@ export function TimesheetView() {
                               <CardHeader className="pb-2">
                                 {/* FIX: Closing CardTitle tag */}
                                 <CardTitle className="text-sm">
-                                  {new Date(`${monthKey}-01`).toLocaleDateString("en-US", {
+                                  {parseLocalDateKey(`${monthKey}-01`).toLocaleDateString("en-US", {
                                     month: "long",
                                     year: "numeric",
                                   })}
@@ -3679,5 +3672,3 @@ export function TimesheetView() {
     </div>
   )
 }
-
-

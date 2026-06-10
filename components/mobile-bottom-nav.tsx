@@ -82,8 +82,8 @@ export function MobileBottomNav() {
   const visibleItems = navItems.filter((item) => NAV_VIEW_IDS.includes(item.id))
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-sidebar/95 backdrop-blur-sm border-t border-sidebar-border pb-safe">
-      <div className="flex items-stretch justify-around gap-0.5 px-1 py-2 min-h-[56px]">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/85 backdrop-blur-xl border-t border-sidebar-border pb-safe shadow-2xl shadow-black/20">
+      <div className="flex items-stretch justify-around gap-1 px-2 py-2 min-h-[60px]">
         {visibleItems.map((item) => {
           const isActive = activeView === item.id
           return (
@@ -91,10 +91,10 @@ export function MobileBottomNav() {
               key={item.id}
               onClick={() => setActiveView(item.id)}
               className={cn(
-                "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg transition-colors max-w-[100px] relative touch-manipulation",
+                "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 px-1 rounded-xl transition-all max-w-[100px] relative touch-manipulation",
                 isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-muted-foreground active:text-sidebar-foreground active:bg-sidebar-accent/50",
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm ring-1 ring-sidebar-border"
+                  : "text-muted-foreground active:text-sidebar-foreground active:bg-sidebar-accent/60",
               )}
               aria-label={item.label}
             >

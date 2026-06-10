@@ -31,7 +31,7 @@ import {
 } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis, ReferenceLine } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { cn } from "@/lib/utils"
+import { cn, getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
 import { format, isToday, isTomorrow, parseISO, differenceInDays } from "date-fns"
 import { useRouter } from "next/navigation"
 
@@ -112,7 +112,7 @@ export function DashboardView() {
   const highPriorityTasks = useMemo(() => tasks.filter((t) => t.priority === "high" && !t.completed), [tasks])
   
   // Overdue and upcoming tasks
-  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], [])
+  const todayStr = useMemo(() => getLocalDateKey(), [])
   const overdueTasks = useMemo(() => 
     tasks.filter((t) => !t.completed && t.dueDate && t.dueDate < todayStr),
     [tasks, todayStr]
@@ -124,7 +124,7 @@ export function DashboardView() {
       !t.completed && 
       t.dueDate && 
       t.dueDate >= todayStr && 
-      t.dueDate <= nextWeek.toISOString().split("T")[0]
+      t.dueDate <= getLocalDateKey(nextWeek)
     )
   }, [tasks, todayStr])
 
@@ -165,9 +165,7 @@ export function DashboardView() {
     start.setHours(0, 0, 0, 0)
 
     const entries = timeEntries.filter((e) => {
-      const entryDate = new Date(e.date)
-      entryDate.setHours(0, 0, 0, 0)
-      return entryDate >= start
+      return parseLocalDateKey(e.date) >= start
     })
     
     const hours = entries.reduce((total, entry) => {
@@ -186,14 +184,12 @@ export function DashboardView() {
       const date = new Date()
       date.setDate(date.getDate() - (6 - i))
       date.setHours(0, 0, 0, 0)
-      return date.toISOString().split("T")[0]
+      return getLocalDateKey(date)
     })
 
     const hours = days.map((date) => {
       const dayEntries = timeEntries.filter((e) => {
-        const entryDate = new Date(e.date)
-        entryDate.setHours(0, 0, 0, 0)
-        return entryDate.toISOString().split("T")[0] === date
+        return e.date === date
       })
       return dayEntries.reduce((total, entry) => {
         const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
@@ -210,7 +206,7 @@ export function DashboardView() {
     const avg = dailyHours.length > 0 ? (dailyHours.reduce((a, b) => a + b, 0) / dailyHours.length).toFixed(1) : "0"
     const max = dailyHours.length > 0 ? Math.max(...dailyHours).toFixed(1) : "0"
     const chartData = last7Days.map((date, index) => ({
-      dateLabel: new Date(date).toLocaleDateString("en-US", { weekday: "short" }),
+      dateLabel: parseLocalDateKey(date).toLocaleDateString("en-US", { weekday: "short" }),
       hours: Number(dailyHours[index].toFixed(2)),
     }))
     return { avgDailyHours: avg, maxDailyHours: max, dailyChartData: chartData }
@@ -226,12 +222,11 @@ export function DashboardView() {
 
   // Habits today
   const todayHabits = useMemo(() => {
-    const today = new Date().toISOString().split("T")[0]
     return habits.filter((h) => {
-      const logs = habitLogs.filter((log) => log.habitId === h.id && log.date === today)
+      const logs = habitLogs.filter((log) => log.habitId === h.id && log.date === todayStr)
       return logs.length > 0
     })
-  }, [habits, habitLogs])
+  }, [habits, habitLogs, todayStr])
 
   const habitsCompletionRate = useMemo(() => {
     if (habits.length === 0) return 0
@@ -267,25 +262,31 @@ export function DashboardView() {
   const hoursProgress = officeHours > 0 ? Math.min(100, (todayHoursWithCurrent / officeHours) * 100) : 0
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-5 sm:space-y-7">
       {/* Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
-            {greeting}{user ? `, ${user.name.split(" ")[0]}` : ""}!
-          </h2>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            Here's what's happening today
-          </p>
-        </div>
-        
-        {/* Quick Actions */}
-        <div className="flex flex-wrap gap-2">
+      <div className="relative overflow-hidden rounded-3xl border border-border/70 bg-card/80 p-5 sm:p-7 shadow-xl shadow-black/5 backdrop-blur dark:shadow-black/25">
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_right,var(--primary),transparent_26rem)] opacity-20" />
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div className="min-w-0">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/50 px-3 py-1 text-xs font-medium text-muted-foreground">
+              <Activity className="size-3.5 text-accent" />
+              {currentEntry ? "Active focus session" : "Ready for today's plan"}
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
+              {greeting}{user ? `, ${user.name.split(" ")[0]}` : ""}!
+            </h2>
+            <p className="text-sm sm:text-base text-muted-foreground mt-2 max-w-2xl">
+              A focused snapshot of your time, tasks, goals, and habits for today.
+            </p>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="flex flex-wrap gap-2 lg:justify-end">
           <Button
             onClick={() => handleQuickAction("clock-in")}
             size="sm"
             variant={currentEntry ? "outline" : "default"}
-            className="min-h-[44px] sm:min-h-0"
+            className="min-h-[44px] sm:min-h-0 rounded-xl shadow-sm"
             disabled={!!currentEntry}
           >
             <Play className="size-4 mr-2" />
@@ -295,7 +296,7 @@ export function DashboardView() {
             onClick={() => handleQuickAction("clock-out")}
             size="sm"
             variant="destructive"
-            className="min-h-[44px] sm:min-h-0"
+            className="min-h-[44px] sm:min-h-0 rounded-xl"
             disabled={!currentEntry}
           >
             <Square className="size-4 mr-2" />
@@ -306,7 +307,7 @@ export function DashboardView() {
               onClick={() => handleQuickAction("tasks")}
               size="sm"
               variant="outline"
-              className="min-h-[44px] sm:min-h-0"
+              className="min-h-[44px] sm:min-h-0 rounded-xl bg-background/50"
             >
               <Plus className="size-4 mr-2" />
               Add Task
@@ -317,18 +318,19 @@ export function DashboardView() {
               onClick={() => handleQuickAction("notes")}
               size="sm"
               variant="outline"
-              className="min-h-[44px] sm:min-h-0"
+              className="min-h-[44px] sm:min-h-0 rounded-xl bg-background/50"
             >
               <Plus className="size-4 mr-2" />
               Add Note
             </Button>
           )}
+          </div>
         </div>
       </div>
 
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+        <Card className="overflow-hidden border-primary/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/10">
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -340,13 +342,13 @@ export function DashboardView() {
                   {officeHours > 0 ? `of ${officeHours}h target` : "logged"}
                 </p>
               </div>
-              <div className="size-12 sm:size-14 rounded-full bg-primary/20 flex items-center justify-center">
+              <div className="size-12 sm:size-14 rounded-2xl bg-primary/15 ring-1 ring-primary/20 flex items-center justify-center">
                 <Timer className="size-5 sm:size-6 text-primary" />
               </div>
             </div>
             {officeHours > 0 && (
               <>
-                <div className="mt-3 w-full bg-secondary rounded-full h-1.5">
+                <div className="mt-3 w-full bg-secondary/70 rounded-full h-1.5">
                   <div
                     className={cn(
                       "h-1.5 rounded-full transition-all",
@@ -417,7 +419,7 @@ export function DashboardView() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-amber-500/10 to-amber-500/5 border-amber-500/20">
+        <Card className="overflow-hidden border-amber-500/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-amber-500/10">
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -431,7 +433,7 @@ export function DashboardView() {
                     : "Hours under target this week (set daily target in Profile)"}
                 </p>
               </div>
-              <div className="size-12 sm:size-14 rounded-full bg-amber-500/20 flex items-center justify-center">
+              <div className="size-12 sm:size-14 rounded-2xl bg-amber-500/15 ring-1 ring-amber-500/20 flex items-center justify-center">
                 <Clock className="size-5 sm:size-6 text-amber-500" />
               </div>
             </div>
@@ -439,7 +441,7 @@ export function DashboardView() {
         </Card>
 
         {isViewEnabled("tasks") && (
-          <Card className="bg-gradient-to-br from-chart-2/10 to-chart-2/5 border-chart-2/20">
+          <Card className="overflow-hidden border-chart-2/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-chart-2/10">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -449,7 +451,7 @@ export function DashboardView() {
                     {completedTasks} completed
                   </p>
                 </div>
-                <div className="size-12 sm:size-14 rounded-full bg-chart-2/20 flex items-center justify-center">
+                <div className="size-12 sm:size-14 rounded-2xl bg-chart-2/15 ring-1 ring-chart-2/20 flex items-center justify-center">
                   <CheckCircle2 className="size-5 sm:size-6 text-chart-2" />
                 </div>
               </div>
@@ -458,7 +460,7 @@ export function DashboardView() {
         )}
 
         {isViewEnabled("goals") && (
-          <Card className="bg-gradient-to-br from-accent/10 to-accent/5 border-accent/20">
+          <Card className="overflow-hidden border-accent/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-accent/10">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -468,7 +470,7 @@ export function DashboardView() {
                     {goalsProgress}% avg progress
                   </p>
                 </div>
-                <div className="size-12 sm:size-14 rounded-full bg-accent/20 flex items-center justify-center">
+                <div className="size-12 sm:size-14 rounded-2xl bg-accent/15 ring-1 ring-accent/20 flex items-center justify-center">
                   <Target className="size-5 sm:size-6 text-accent" />
                 </div>
               </div>
@@ -477,7 +479,7 @@ export function DashboardView() {
         )}
 
         {isViewEnabled("habits") && (
-          <Card className="bg-gradient-to-br from-chart-3/10 to-chart-3/5 border-chart-3/20">
+          <Card className="overflow-hidden border-chart-3/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-chart-3/10">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -489,7 +491,7 @@ export function DashboardView() {
                     {habitsCompletionRate}% completed
                   </p>
                 </div>
-                <div className="size-12 sm:size-14 rounded-full bg-chart-3/20 flex items-center justify-center">
+                <div className="size-12 sm:size-14 rounded-2xl bg-chart-3/15 ring-1 ring-chart-3/20 flex items-center justify-center">
                   <Flame className="size-5 sm:size-6 text-chart-3" />
                 </div>
               </div>
@@ -519,7 +521,7 @@ export function DashboardView() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
             {overdueTasks.length > 0 && (
-              <Card className="bg-destructive/5 border-destructive/20">
+              <Card className="border-destructive/25 bg-card/80 shadow-sm backdrop-blur">
                 <CardHeader className="pb-3 p-4 sm:p-6">
                   <CardTitle className="text-sm sm:text-base font-semibold flex items-center gap-2 text-destructive">
                     <AlertCircle className="size-4 sm:size-5" />
@@ -540,7 +542,7 @@ export function DashboardView() {
             )}
 
             {highPriorityTasks.length > 0 && (
-              <Card className="bg-chart-3/5 border-chart-3/20">
+              <Card className="border-chart-3/25 bg-card/80 shadow-sm backdrop-blur">
                 <CardHeader className="pb-3 p-4 sm:p-6">
                   <CardTitle className="text-sm sm:text-base font-semibold flex items-center gap-2 text-chart-3">
                     <Zap className="size-4 sm:size-5" />
@@ -561,7 +563,7 @@ export function DashboardView() {
             )}
 
             {upcomingTasks.length > 0 && (
-              <Card className="bg-primary/5 border-primary/20">
+              <Card className="border-primary/25 bg-card/80 shadow-sm backdrop-blur">
                 <CardHeader className="pb-3 p-4 sm:p-6">
                   <CardTitle className="text-sm sm:text-base font-semibold flex items-center gap-2 text-primary">
                     <CalendarDays className="size-4 sm:size-5" />
@@ -597,7 +599,7 @@ export function DashboardView() {
 
       {/* Charts and Analytics */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-        <Card className="lg:col-span-2 bg-card border-border">
+        <Card className="lg:col-span-2 border-border/70 bg-card/80 shadow-sm backdrop-blur">
           <CardHeader className="p-4 sm:p-6">
             <CardTitle className="text-base sm:text-lg font-semibold flex items-center gap-2">
               <BarChart3 className="size-4 sm:size-5 text-primary" />
@@ -659,7 +661,7 @@ export function DashboardView() {
                 />
               </AreaChart>
             </ChartContainer>
-            <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-border">
+            <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-border/70">
               <div>
                 <p className="text-xs text-muted-foreground">Total Hours</p>
                 <p className="text-lg font-bold text-foreground">{weeklyHours.toFixed(1)}h</p>
@@ -676,7 +678,7 @@ export function DashboardView() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border">
+        <Card className="border-border/70 bg-card/80 shadow-sm backdrop-blur">
           <CardHeader className="p-4 sm:p-6">
             <CardTitle className="text-base sm:text-lg font-semibold flex items-center gap-2">
               <Activity className="size-4 sm:size-5 text-accent" />
@@ -690,7 +692,7 @@ export function DashboardView() {
                   <span className="text-xs sm:text-sm text-muted-foreground">Task Completion</span>
                   <span className="text-xs sm:text-sm font-semibold text-foreground">{completionRate}%</span>
                 </div>
-                <div className="w-full bg-secondary rounded-full h-2.5">
+                <div className="w-full bg-secondary/70 rounded-full h-2.5">
                   <div
                     className="bg-primary h-2.5 rounded-full transition-all"
                     style={{ width: `${completionRate}%` }}
@@ -698,7 +700,7 @@ export function DashboardView() {
                 </div>
               </div>
             )}
-            <div className="flex justify-between items-center pt-2 border-t border-border">
+            <div className="flex justify-between items-center pt-2 border-t border-border/70">
               <span className="text-xs sm:text-sm text-muted-foreground">Weekly Sessions</span>
               <span className="text-base sm:text-lg font-bold text-foreground">{weekEntries.length}</span>
             </div>
@@ -720,7 +722,7 @@ export function DashboardView() {
 
       {/* Current Work Session */}
       {currentEntry && (
-        <Card className="bg-chart-2/10 border-chart-2/30">
+        <Card className="border-chart-2/30 bg-card/80 shadow-lg shadow-chart-2/10 backdrop-blur">
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -755,7 +757,7 @@ export function DashboardView() {
       {(isViewEnabled("goals") || isViewEnabled("habits")) && (activeGoals.length > 0 || habits.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
           {activeGoals.length > 0 && (
-            <Card className="bg-card border-border">
+            <Card className="border-border/70 bg-card/80 shadow-sm backdrop-blur">
               <CardHeader className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base sm:text-lg font-semibold flex items-center gap-2">
@@ -782,7 +784,7 @@ export function DashboardView() {
                       </span>
                       <span className="text-xs font-semibold text-accent">{goal.progress}%</span>
                     </div>
-                    <div className="w-full bg-secondary rounded-full h-2">
+                    <div className="w-full bg-secondary/70 rounded-full h-2">
                       <div
                         className="bg-accent h-2 rounded-full transition-all"
                         style={{ width: `${goal.progress}%` }}
@@ -795,7 +797,7 @@ export function DashboardView() {
           )}
 
           {habits.length > 0 && (
-            <Card className="bg-card border-border">
+            <Card className="border-border/70 bg-card/80 shadow-sm backdrop-blur">
               <CardHeader className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base sm:text-lg font-semibold flex items-center gap-2">
@@ -815,9 +817,8 @@ export function DashboardView() {
               </CardHeader>
               <CardContent className="p-4 sm:p-6 pt-0 space-y-3">
                 {habits.slice(0, 3).map((habit) => {
-                  const today = new Date().toISOString().split("T")[0]
                   const isCompleted = habitLogs.some(
-                    (log) => log.habitId === habit.id && log.date === today
+                    (log) => log.habitId === habit.id && log.date === todayStr
                   )
                   return (
                     <div key={habit.id} className="flex items-center justify-between">
@@ -847,7 +848,7 @@ export function DashboardView() {
       {/* Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         {isViewEnabled("notes") && (
-          <Card className="bg-card border-border">
+          <Card className="border-border/70 bg-card/80 shadow-sm backdrop-blur">
             <CardHeader className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base sm:text-lg font-semibold">Recent Notes</CardTitle>
@@ -868,7 +869,7 @@ export function DashboardView() {
               ) : (
                 <ul className="space-y-3">
                   {notes.slice(0, 4).map((note) => (
-                    <li key={note.id} className="border-b border-border pb-3 last:border-0 last:pb-0">
+                    <li key={note.id} className="border-b border-border/70 pb-3 last:border-0 last:pb-0">
                       <p className="font-medium text-xs sm:text-sm text-card-foreground line-clamp-1">
                         {note.title}
                       </p>
@@ -886,7 +887,7 @@ export function DashboardView() {
           </Card>
         )}
 
-        <Card className="bg-card border-border">
+        <Card className="border-border/70 bg-card/80 shadow-sm backdrop-blur">
           <CardHeader className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base sm:text-lg font-semibold">Quick Stats</CardTitle>

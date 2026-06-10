@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Trash2, Flag, AlertCircle, ChevronLeft, ChevronRight, ArrowUp } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, getLocalDateKey } from "@/lib/utils"
 import { toast } from "@/components/ui/use-toast"
 
 export function TasksView() {
@@ -30,10 +30,10 @@ export function TasksView() {
   const [inputError, setInputError] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(20)
-  const todayStr = new Date().toISOString().split("T")[0]
+  const todayStr = getLocalDateKey()
   const nextWeek = new Date()
   nextWeek.setDate(nextWeek.getDate() + 7)
-  const nextWeekStr = nextWeek.toISOString().split("T")[0]
+  const nextWeekStr = getLocalDateKey(nextWeek)
 
   const handleAddTask = () => {
     if (!newTaskTitle.trim()) {

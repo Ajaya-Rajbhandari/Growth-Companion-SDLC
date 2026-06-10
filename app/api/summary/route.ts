@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
+import { getLocalDateKey } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 30
@@ -30,7 +31,7 @@ export async function GET() {
     }
 
     const userId = session.user.id
-    const today = new Date().toISOString().split("T")[0]
+    const today = getLocalDateKey()
 
     const [{ count: taskCount }, { count: noteCount }, { data: timeEntries }] = await Promise.all([
       supabase.from("tasks").select("id", { count: "exact", head: true }).eq("user_id", userId),
@@ -68,4 +69,3 @@ export async function GET() {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
-

@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from "vitest"
+import { afterEach, describe, it, expect, beforeEach, vi } from "vitest"
 import { useAppStore } from "@/lib/store"
+import { getLocalDateKey } from "@/lib/utils"
 
 // Mock Supabase
 vi.mock("@/lib/supabase", () => ({
@@ -38,6 +39,10 @@ describe("Timesheet Store", () => {
       user: { id: "test-user", name: "Test User", email: "test@example.com", createdAt: new Date().toISOString() },
       isLoggedIn: true,
     })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   describe("clockIn", () => {
@@ -604,21 +609,59 @@ describe("Timesheet Store", () => {
     })
   })
 
+  describe("deleteTimeEntry", () => {
+    it("clears the active session and break when deleting the current entry", async () => {
+      const { deleteTimeEntry } = useAppStore.getState()
+      const { supabase } = await import("@/lib/supabase")
+      const activeEntry = {
+        id: "entry-1",
+        date: getLocalDateKey(),
+        clockIn: new Date().toISOString(),
+        breakMinutes: 0,
+        breaks: [],
+        title: "Active Task",
+      }
+
+      useAppStore.setState({
+        currentEntry: activeEntry,
+        timeEntries: [activeEntry],
+        activeBreak: {
+          id: "break-1",
+          startTime: new Date().toISOString(),
+          durationMinutes: 15,
+          type: "short",
+        },
+      })
+
+      const mockDelete = vi.fn(() => ({
+        eq: vi.fn(() => ({ error: null })),
+      }))
+      ;(supabase.from as any).mockReturnValue({ delete: mockDelete })
+
+      await deleteTimeEntry("entry-1")
+
+      const { currentEntry, activeBreak, timeEntries } = useAppStore.getState()
+      expect(currentEntry).toBeNull()
+      expect(activeBreak).toBeNull()
+      expect(timeEntries).toEqual([])
+    })
+  })
+
   describe("Edge Cases", () => {
     it("should handle clock in at midnight (day transition)", async () => {
       const { clockIn } = useAppStore.getState()
       const { supabase } = await import("@/lib/supabase")
       
-      // Mock date at 11:59 PM
       const midnightDate = new Date("2026-01-19T23:59:00Z")
-      vi.spyOn(global, "Date").mockImplementation(() => midnightDate as any)
+      vi.useFakeTimers()
+      vi.setSystemTime(midnightDate)
 
       const mockInsert = vi.fn(() => ({
         select: vi.fn(() => ({
           single: vi.fn(() => ({
             data: {
               id: "entry-1",
-              date: midnightDate.toISOString().split("T")[0],
+              date: getLocalDateKey(midnightDate),
               clock_in: midnightDate.toISOString(),
               clock_out: null,
               break_minutes: 0,
@@ -635,7 +678,8 @@ describe("Timesheet Store", () => {
       await clockIn("Midnight Task")
 
       const { currentEntry } = useAppStore.getState()
-      expect(currentEntry?.date).toBe(midnightDate.toISOString().split("T")[0])
+      expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ date: getLocalDateKey(midnightDate) }))
+      expect(currentEntry?.date).toBe(getLocalDateKey(midnightDate))
     })
 
     it("should handle very long task titles", async () => {

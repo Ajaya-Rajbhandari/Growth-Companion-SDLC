@@ -72,33 +72,34 @@ export function Sidebar() {
   ]
 
   return (
-    <aside className="w-64 bg-sidebar border-r border-sidebar-border h-screen flex flex-col fixed top-0 left-0 z-40">
-      <div className="p-6">
-        <div className="flex items-center gap-3">
-          <div className="size-10 rounded-xl bg-primary/20 flex items-center justify-center">
-            <Sparkles className="size-5 text-primary" />
+    <aside className="w-64 bg-sidebar/90 backdrop-blur-xl border-r border-sidebar-border h-screen flex flex-col fixed top-0 left-0 z-40 shadow-2xl shadow-black/10">
+      <div className="p-5">
+        <div className="flex items-center gap-3 rounded-2xl border border-sidebar-border/70 bg-sidebar-accent/35 p-3">
+          <div className="size-11 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/20">
+            <Sparkles className="size-5 text-primary-foreground" />
           </div>
-          <div>
-            <h1 className="font-semibold text-sidebar-foreground">Companion</h1>
-            <p className="text-xs text-muted-foreground">Personal Assistant</p>
+          <div className="min-w-0">
+            <h1 className="font-bold tracking-tight text-sidebar-foreground">Companion</h1>
+            <p className="text-xs text-muted-foreground">Growth command center</p>
           </div>
         </div>
       </div>
 
-      <nav className="flex-1 px-3 overflow-y-auto">
+      <nav className="flex-1 px-3 overflow-y-auto scrollbar-hide">
         <ul className="space-y-1">
           {navItems.filter((item) => NAV_VIEW_IDS.includes(item.id)).map((item) => (
             <li key={item.id}>
               <button
                 onClick={() => setActiveView(item.id)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors",
+                  "group relative w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all",
                   activeView === item.id
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm ring-1 ring-sidebar-border"
+                    : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/60",
                 )}
               >
-                <item.icon className="size-5" />
+                {activeView === item.id && <span className="absolute left-1 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-primary" />}
+                <item.icon className={cn("size-5 transition-transform", activeView === item.id ? "text-primary" : "group-hover:scale-105")} />
                 <span className="flex-1 text-left">{item.label}</span>
                 {item.badge && (
                   <span
@@ -118,31 +119,32 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      <div className="p-4 space-y-3 border-t border-border">
+      <div className="p-4 space-y-3 border-t border-sidebar-border/70">
         <button
           onClick={toggleTheme}
-          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-secondary/50"
+          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors rounded-xl hover:bg-sidebar-accent/70"
         >
           {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
           {isDark ? "Light Mode" : "Dark Mode"}
         </button>
         {user && (
-          <div className="px-3 py-2 rounded-lg bg-secondary/50">
+          <div className="px-3 py-2 rounded-xl bg-sidebar-accent/50 border border-sidebar-border/60">
             <p className="text-xs text-muted-foreground">Signed in as</p>
             <p className="text-sm font-semibold text-foreground truncate">{user.name}</p>
           </div>
         )}
         <button
           onClick={logout}
-          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors rounded-lg hover:bg-destructive/10"
+          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors rounded-xl hover:bg-destructive/10"
         >
           <LogOut className="size-4" />
           Sign Out
         </button>
       </div>
 
-      <div className="p-4 m-3 rounded-lg bg-secondary/50 border border-border">
-        <p className="text-xs text-muted-foreground">Stay organized and productive with your personal companion.</p>
+      <div className="p-4 m-3 rounded-2xl bg-gradient-to-br from-primary/15 via-sidebar-accent/60 to-accent/10 border border-sidebar-border/70">
+        <p className="text-xs font-medium text-sidebar-foreground">Stay focused.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Plan your tasks, protect your energy, and track daily momentum.</p>
       </div>
     </aside>
   )

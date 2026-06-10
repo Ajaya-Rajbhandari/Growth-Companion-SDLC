@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useRef, useEffect, useState, useCallback } from "react"
-import { useAppStore, type ChatMessage } from "@/lib/store"
+import { useAppStore, type ChatMessage, type Note } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -33,10 +33,18 @@ import {
   Copy,
   RotateCw,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, getLocalDateKey } from "@/lib/utils"
 import { AIMessage } from "@/components/ai-message"
 import { AIFeedback } from "@/components/ai-feedback"
 import { toast } from "@/components/ui/use-toast"
+
+type NoteCategory = NonNullable<Note["category"]>
+
+const NOTE_CATEGORIES: NoteCategory[] = ["work", "personal", "ideas", "meeting", "other"]
+
+function normalizeNoteCategory(category: string | undefined): NoteCategory {
+  return NOTE_CATEGORIES.includes(category as NoteCategory) ? (category as NoteCategory) : "other"
+}
 
 // Generate context-aware suggested prompts
 const getSuggestedPrompts = (
@@ -54,9 +62,6 @@ const getSuggestedPrompts = (
   const pendingTasks = tasks.filter((t) => !t.completed).length
   const highPriorityTasks = tasks.filter((t) => !t.completed && t.priority === "high").length
   const activeGoals = goals.filter((g) => g.status === "active").length
-  const today = new Date().toISOString().split("T")[0]
-  const todayHabitLogs = habits.length > 0 ? habits.length : 0
-  
   const basePrompts = [
     {
       icon: Target,
@@ -440,12 +445,12 @@ export function FloatingAssistant() {
               const exists = notes.some((n) => n.title === args.title)
               if (!exists) {
                 try {
-                  await addNote({ 
-                    title: args.title, 
+                  await addNote({
+                    title: args.title,
                     content: args.content,
-                    category: args.category || "other",
+                    category: normalizeNoteCategory(args.category),
                     tags: args.tags || []
-                  })
+	                  })
                   results.push({ name: "createNote", result: { success: true, title: args.title } })
                 } catch (error) {
                   const errorMessage = error instanceof Error ? error.message : String(error)
@@ -546,7 +551,9 @@ export function FloatingAssistant() {
             ? error.message 
             : typeof error === 'string' 
               ? error 
-              : error?.message || JSON.stringify(error)
+              : typeof error === "object" && error !== null && "message" in error
+                ? String(error.message)
+                : JSON.stringify(error)
           setError(`Error executing ${toolCall.name}: ${errorMessage}`)
         }
       }
@@ -619,6 +626,7 @@ export function FloatingAssistant() {
               goals,
               habits,
               habitLogs,
+              todayKey: getLocalDateKey(),
               currentEntry,
               timeEntries,
             },
@@ -707,13 +715,14 @@ export function FloatingAssistant() {
                     const { type, payload } = data.toolAction
 
                     switch (type) {
-                      case "createTask":
+                      case "createTask": {
                         const taskExists = tasks.some((t) => t.title === payload.title)
                         if (!taskExists) {
                           await addTask(payload)
                         }
                         break
-                      case "createNote":
+                      }
+                      case "createNote": {
                         if (!payload.title || !payload.content) {
                           console.error("[v0] Missing required note fields:", payload)
                           break
@@ -729,6 +738,7 @@ export function FloatingAssistant() {
                           }
                         }
                         break
+                      }
                       case "clockIn":
                         if (!currentEntry) {
                           await clockIn(payload.taskDescription)
@@ -935,7 +945,7 @@ export function FloatingAssistant() {
                       case "logHabit":
                         if (payload.habitId) {
                           try {
-                            await logHabit(payload.habitId, payload.date || new Date().toISOString().split("T")[0], payload.count)
+                            await logHabit(payload.habitId, payload.date || getLocalDateKey(), payload.count)
                           } catch (error) {
                             console.error("[v0] Failed to log habit:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
@@ -1022,6 +1032,16 @@ export function FloatingAssistant() {
       deleteChatSession(sessionId)
     },
     [deleteChatSession],
+  )
+
+  const handleSessionKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>, sessionId: string) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault()
+        handleLoadSession(sessionId)
+      }
+    },
+    [handleLoadSession],
   )
 
   useEffect(() => {
@@ -1206,11 +1226,6 @@ export function FloatingAssistant() {
   if (typeof window === "undefined") {
     return null // SSR guard
   }
-
-  // Debug: Log when component renders
-  useEffect(() => {
-    console.log("FloatingAssistant mounted, isChatOpen:", isChatOpen, "viewport:", viewport)
-  }, [])
 
   return (
     <>
@@ -1426,10 +1441,14 @@ export function FloatingAssistant() {
               ) : (
                 <div className="p-3 space-y-2">
                   {chatSessions.map((session) => (
-                    <button
+                    <div
                       key={session.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleLoadSession(session.id)}
+                      onKeyDown={(e) => handleSessionKeyDown(e, session.id)}
                       className={cn(
+                        "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                         "w-full text-left p-4 rounded-xl transition-all group",
                         "hover:bg-secondary/50 border border-transparent hover:border-border",
                         currentChatSessionId === session.id && "bg-primary/5 border-primary/20",
@@ -1455,7 +1474,7 @@ export function FloatingAssistant() {
                           </button>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
