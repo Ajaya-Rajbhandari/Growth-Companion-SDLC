@@ -1,0 +1,55 @@
+import type { StateCreator } from "zustand"
+import { supabase } from "../supabase"
+import type { AppState } from "./index"
+
+export interface UiSlice {
+  activeView: "dashboard" | "tasks" | "notes" | "timesheet" | "calendar" | "goals" | "habits" | "profile"
+  hasCompletedOnboarding: boolean
+  currentOnboardingStep: number
+
+  setActiveView: (view: "dashboard" | "tasks" | "notes" | "timesheet" | "calendar" | "goals" | "habits" | "profile") => void
+  setOnboardingStatus: (completed: boolean) => void
+  setOnboardingStep: (step: number) => void
+  completeOnboarding: () => Promise<void>
+  skipOnboarding: () => Promise<void>
+}
+
+export const createUiSlice: StateCreator<
+  AppState,
+  [["zustand/persist", unknown]],
+  [],
+  UiSlice
+> = (set, get) => ({
+  activeView: "dashboard",
+  hasCompletedOnboarding: false,
+  currentOnboardingStep: 0,
+
+  setActiveView: (view) => set({ activeView: view }),
+
+  setOnboardingStatus: (completed: boolean) => {
+    set({
+      hasCompletedOnboarding: completed,
+      currentOnboardingStep: completed ? 0 : get().currentOnboardingStep,
+    })
+  },
+
+  setOnboardingStep: (step: number) => {
+    set({ currentOnboardingStep: step })
+  },
+
+  completeOnboarding: async () => {
+    const { error } = await supabase.auth.updateUser({
+      data: { hasCompletedOnboarding: true },
+    })
+    if (error) throw error
+    set({ hasCompletedOnboarding: true, currentOnboardingStep: 0 })
+  },
+
+  skipOnboarding: async () => {
+    const { error } = await supabase.auth.updateUser({
+      data: { hasCompletedOnboarding: true },
+    })
+    if (error) throw error
+    set({ hasCompletedOnboarding: true, currentOnboardingStep: 0 })
+  },
+})
