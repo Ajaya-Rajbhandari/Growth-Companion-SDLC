@@ -86,8 +86,10 @@ export default function WidgetPage() {
 
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const suggestAbortRef = useRef<AbortController | null>(null)
   const suggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const operationRef = useRef(false)
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -218,60 +220,132 @@ export default function WidgetPage() {
     }
   }, [activeBreak, breakEndedAlert, playAlarm, stopAlarm])
 
-  const handleStartBreak = () => {
-    unlockNotificationAudio()
-    const mins = breakType === "custom"
-      ? (breakMinutes.trim() ? Number.parseInt(breakMinutes, 10) : 15)
-      : BREAK_TYPE_OPTIONS.find((o) => o.type === breakType)?.defaultMinutes ?? 15
-    if (breakType === "custom" && (!breakMinutes.trim() || isNaN(Number.parseInt(breakMinutes, 10)))) {
-      toast({ title: "Invalid duration", description: "Enter break duration in minutes.", variant: "destructive" })
-      return
-    }
-    if (mins <= 0 || mins > 480) {
-      toast({ title: "Invalid duration", description: "Use 1–480 minutes.", variant: "destructive" })
-      return
-    }
-    const title = breakTitle.trim() || undefined
-    startBreak(mins, breakType, title)
-    toast({
-      title: "Break started",
-      description: title ? `${title} — ${mins} min` : `${mins} minute ${breakType} break.`,
-    })
-    setBreakTitle("")
-  }
+  const handleStartBreak = async () => {
+    if (operationRef.current) return
+    operationRef.current = true
+    setIsLoading(true)
 
-  const handleEndBreak = () => {
-    stopAlarm()
-    endBreak()
-      .then(() => toast({ title: "Break ended", description: "Welcome back! Ready to continue working." }))
-      .catch((e) => toast({ title: "Failed", description: e?.message || "Could not end break", variant: "destructive" }))
-  }
-
-  const handleClockIn = () => {
-    const title = workTitle.trim() || undefined
-    clockIn(title)
-      .then(() => {
-        setWorkTitle("")
-        toast({ title: "Clocked in", description: title ? `Started "${title}"` : "Session started." })
+    try {
+      unlockNotificationAudio()
+      const mins = breakType === "custom"
+        ? (breakMinutes.trim() ? Number.parseInt(breakMinutes, 10) : 15)
+        : BREAK_TYPE_OPTIONS.find((o) => o.type === breakType)?.defaultMinutes ?? 15
+      if (breakType === "custom" && (!breakMinutes.trim() || isNaN(Number.parseInt(breakMinutes, 10)))) {
+        toast({ title: "Invalid duration", description: "Enter break duration in minutes.", variant: "destructive" })
+        return
+      }
+      if (mins <= 0 || mins > 480) {
+        toast({ title: "Invalid duration", description: "Use 1–480 minutes.", variant: "destructive" })
+        return
+      }
+      const title = breakTitle.trim() || undefined
+      await startBreak(mins, breakType, title)
+      toast({
+        title: "Break started",
+        description: title ? `${title} — ${mins} min` : `${mins} minute ${breakType} break.`,
       })
-      .catch((e) => toast({ title: "Failed", description: e?.message || "Could not clock in", variant: "destructive" }))
-  }
-
-  const handleClockOut = () => {
-    clockOut()
-      .then(() => toast({ title: "Clocked out", description: "Session ended." }))
-      .catch((e) => toast({ title: "Failed", description: e?.message || "Could not clock out", variant: "destructive" }))
-  }
-
-  const handleSwitchTask = () => {
-    const title = newTaskTitle.trim()
-    if (!title) return
-    switchTask(title)
-      .then(() => {
-        setNewTaskTitle("")
-        toast({ title: "Task logged", description: `Switched to "${title}"` })
+      setBreakTitle("")
+    } catch (error) {
+      console.error("[handleStartBreak]", error)
+      toast({
+        title: "Break failed",
+        description: error instanceof Error ? error.message : "Could not start break",
+        variant: "destructive",
       })
-      .catch((e) => toast({ title: "Failed", description: e?.message || "Could not switch task", variant: "destructive" }))
+    } finally {
+      setIsLoading(false)
+      operationRef.current = false
+    }
+  }
+
+  const handleEndBreak = async () => {
+    if (operationRef.current) return
+    operationRef.current = true
+    setIsLoading(true)
+
+    try {
+      stopAlarm()
+      await endBreak()
+      toast({ title: "Break ended", description: "Welcome back! Ready to continue working." })
+    } catch (error) {
+      console.error("[handleEndBreak]", error)
+      toast({
+        title: "Failed",
+        description: error instanceof Error ? error.message : "Could not end break",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+      operationRef.current = false
+    }
+  }
+
+  const handleClockIn = async () => {
+    if (operationRef.current) return
+    operationRef.current = true
+    setIsLoading(true)
+
+    try {
+      const title = workTitle.trim() || undefined
+      await clockIn(title)
+      setWorkTitle("")
+      toast({ title: "Clocked in", description: title ? `Started "${title}"` : "Session started." })
+    } catch (error) {
+      console.error("[handleClockIn]", error)
+      toast({
+        title: "Failed",
+        description: error instanceof Error ? error.message : "Could not clock in",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+      operationRef.current = false
+    }
+  }
+
+  const handleClockOut = async () => {
+    if (operationRef.current) return
+    operationRef.current = true
+    setIsLoading(true)
+
+    try {
+      await clockOut()
+      toast({ title: "Clocked out", description: "Session ended." })
+    } catch (error) {
+      console.error("[handleClockOut]", error)
+      toast({
+        title: "Failed",
+        description: error instanceof Error ? error.message : "Could not clock out",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+      operationRef.current = false
+    }
+  }
+
+  const handleSwitchTask = async () => {
+    if (operationRef.current) return
+    operationRef.current = true
+    setIsLoading(true)
+
+    try {
+      const title = newTaskTitle.trim()
+      if (!title) return
+      await switchTask(title)
+      setNewTaskTitle("")
+      toast({ title: "Task logged", description: `Switched to "${title}"` })
+    } catch (error) {
+      console.error("[handleSwitchTask]", error)
+      toast({
+        title: "Failed",
+        description: error instanceof Error ? error.message : "Could not switch task",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+      operationRef.current = false
+    }
   }
 
   const hasClockedInToday = getTodayTimeEntries().length > 0
@@ -348,9 +422,9 @@ export default function WidgetPage() {
           {breakEndedAlert && (
             <p className="text-xs text-red-600 dark:text-red-400 text-center mb-2">Break time has ended — tap Resume</p>
           )}
-          <Button onClick={handleEndBreak} className="w-full gap-2" size="lg">
+          <Button onClick={handleEndBreak} className="w-full gap-2" size="lg" disabled={isLoading}>
             <Play className="size-4" />
-            Resume Work
+            {isLoading ? "Resuming…" : "Resume Work"}
           </Button>
         </div>
       )}
@@ -412,9 +486,9 @@ export default function WidgetPage() {
                 <p className="text-[10px] text-muted-foreground mt-0.5">{breakTitle.length}/100</p>
               )}
             </div>
-            <Button onClick={handleStartBreak} className="w-full gap-2" size="sm">
+            <Button onClick={handleStartBreak} className="w-full gap-2" size="sm" disabled={isLoading}>
               <Play className="size-4" />
-              Start break
+              {isLoading ? "Starting…" : "Start break"}
             </Button>
           </div>
         </div>
@@ -431,9 +505,9 @@ export default function WidgetPage() {
             onKeyDown={(e) => e.key === "Enter" && handleClockIn()}
             className="mb-2"
           />
-          <Button onClick={handleClockIn} className="w-full gap-2" size="lg">
+          <Button onClick={handleClockIn} className="w-full gap-2" size="lg" disabled={isLoading}>
             <Play className="size-4" />
-            Clock In
+            {isLoading ? "Clocking in…" : "Clock In"}
           </Button>
         </div>
       )}
@@ -482,15 +556,15 @@ export default function WidgetPage() {
               variant="secondary"
               className="w-full gap-2"
               size="lg"
-              disabled={!newTaskTitle.trim()}
+              disabled={!newTaskTitle.trim() || isLoading}
             >
               <ClipboardList className="size-4" />
-              Log & switch
+              {isLoading ? "Logging…" : "Log & switch"}
             </Button>
           </div>
-          <Button onClick={handleClockOut} variant="destructive" className="w-full gap-2" size="lg">
+          <Button onClick={handleClockOut} variant="destructive" className="w-full gap-2" size="lg" disabled={isLoading}>
             <Square className="size-4" />
-            Clock Out
+            {isLoading ? "Clocking out…" : "Clock Out"}
           </Button>
         </>
       )}
