@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedUser } from "@/lib/server/auth"
 import { checkRateLimit } from "@/lib/server/rate-limit"
+import { SuggestTaskTitlesRequestSchema } from "@/lib/server/schemas"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 15
@@ -33,11 +34,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const draft = typeof body.draft === "string" ? body.draft.trim() : ""
-    const recentTitles: string[] = Array.isArray(body.recentTitles)
-      ? body.recentTitles.filter((t: unknown) => typeof t === "string").slice(0, 20)
-      : []
-    const currentTask = typeof body.currentTask === "string" ? body.currentTask.trim() : ""
+    const parsed = SuggestTaskTitlesRequestSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid request body", suggestions: [] }, { status: 400 })
+    }
+
+    const { draft, recentTitles, currentTask } = parsed.data
 
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(

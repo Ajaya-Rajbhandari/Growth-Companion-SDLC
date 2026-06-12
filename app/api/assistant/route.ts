@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { getLocalDateKey } from "@/lib/utils"
 import { checkRateLimit, rateLimitResponse } from "@/lib/server/rate-limit"
+import { AssistantRequestSchema } from "@/lib/server/schemas"
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -1171,15 +1172,15 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { messages, appState } = body
-
-    // 1. Basic validation
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return new Response(JSON.stringify({ error: "Invalid messages format" }), {
+    const parsed = AssistantRequestSchema.safeParse(body)
+    if (!parsed.success) {
+      return new Response(JSON.stringify({ error: "Invalid request body", details: parsed.error.errors }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       })
     }
+
+    const { messages, appState } = parsed.data
 
     // 2. Rate limiting (per user, sliding window)
     const rate = checkRateLimit(`assistant:${user.id}`, ASSISTANT_RATE_LIMIT, ASSISTANT_RATE_WINDOW_MS)

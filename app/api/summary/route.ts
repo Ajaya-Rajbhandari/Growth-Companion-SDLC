@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { getLocalDateKey } from "@/lib/utils"
+import { SummaryResponseSchema } from "@/lib/server/schemas"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 30
@@ -60,11 +61,19 @@ export async function GET() {
         return total + diffMs / (1000 * 60 * 60)
       }, 0) || 0
 
-    return Response.json({
+    const response = {
       tasks: { total: taskCount || 0, pending: pendingCount },
       notes: { total: noteCount || 0 },
       timesheet: { todayHours: Math.round(todayHours * 100) / 100, sessionsToday: timeEntries?.length || 0 },
-    })
+    }
+
+    const validated = SummaryResponseSchema.safeParse(response)
+    if (!validated.success) {
+      console.error("[summary] Response validation failed:", validated.error)
+      return Response.json({ error: "Invalid response format" }, { status: 500 })
+    }
+
+    return Response.json(validated.data)
   } catch (error) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
