@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
+import { getAuthenticatedUser } from "@/lib/server/auth"
+import { checkRateLimit } from "@/lib/server/rate-limit"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 15
+
+const RATE_LIMIT = 20
+const RATE_WINDOW_MS = 60_000
 
 const systemPrompt = `You suggest short, professional task titles for a timesheet / work log. 
 Rules:
@@ -14,6 +19,19 @@ Rules:
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getAuthenticatedUser()
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized", suggestions: [] }, { status: 401 })
+    }
+
+    const rate = checkRateLimit(`suggest-task-titles:${user.id}`, RATE_LIMIT, RATE_WINDOW_MS)
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests", suggestions: [] },
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } }
+      )
+    }
+
     const body = await request.json()
     const draft = typeof body.draft === "string" ? body.draft.trim() : ""
     const recentTitles: string[] = Array.isArray(body.recentTitles)

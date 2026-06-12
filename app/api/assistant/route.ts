@@ -1,9 +1,13 @@
 import { createServerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { getLocalDateKey } from "@/lib/utils"
+import { checkRateLimit, rateLimitResponse } from "@/lib/server/rate-limit"
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
+
+const ASSISTANT_RATE_LIMIT = 20
+const ASSISTANT_RATE_WINDOW_MS = 60_000
 
 const systemPrompt = `You are a helpful personal growth and app navigation assistant integrated into a productivity app called "Companion". You help users with:
 
@@ -1177,15 +1181,10 @@ export async function POST(request: Request) {
       })
     }
 
-    // 2. Rate limiting check (Placeholder: in production, use Redis or Supabase check)
-    // For now, we'll just log the request
-    console.log(`[v0] Assistant request from user: ${user.id}`)
-
-    if (!messages || !Array.isArray(messages)) {
-      return new Response(JSON.stringify({ error: "Invalid messages format" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      })
+    // 2. Rate limiting (per user, sliding window)
+    const rate = checkRateLimit(`assistant:${user.id}`, ASSISTANT_RATE_LIMIT, ASSISTANT_RATE_WINDOW_MS)
+    if (!rate.allowed) {
+      return rateLimitResponse(rate)
     }
 
     console.log("[v0] Processing request with app state:", !!appState)
