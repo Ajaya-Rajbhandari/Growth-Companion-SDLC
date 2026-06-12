@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { isViewEnabled, type ViewId } from "@/lib/feature-flags"
@@ -9,12 +9,9 @@ import { Button } from "@/components/ui/button"
 import {
   CheckCircle2,
   Circle,
-  FileText,
   Clock,
-  TrendingUp,
   Zap,
   AlertCircle,
-  Mail,
   Calendar,
   BarChart3,
   Activity,
@@ -26,14 +23,12 @@ import {
   ArrowRight,
   CalendarDays,
   Timer,
-  Award,
   Bell,
 } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis, ReferenceLine } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { cn, getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
 import { format, isToday, isTomorrow, parseISO, differenceInDays } from "date-fns"
-import { useRouter } from "next/navigation"
 
 function formatMinutes(totalMinutes: number): string {
   const hours = Math.floor(totalMinutes / 60)
@@ -55,7 +50,6 @@ function getDailyLimitStatusLabel(status: "normal" | "warning" | "grace" | "over
 }
 
 export function DashboardView() {
-  const router = useRouter()
   const { 
     tasks, 
     notes, 
@@ -107,6 +101,17 @@ export function DashboardView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, user?.id, hasData])
 
+  // Keep live Today/status cards fresh while a session is open.
+  // Without this ticking value, Date.now() inside memoized calculations only updates
+  // when another state change happens, so the dashboard can look stale after clock-in.
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  useEffect(() => {
+    if (!currentEntry) return
+    setNowMs(Date.now())
+    const interval = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(interval)
+  }, [currentEntry])
+
   const completedTasks = useMemo(() => tasks.filter((t) => t.completed).length, [tasks])
   const pendingTasks = useMemo(() => tasks.filter((t) => !t.completed).length, [tasks])
   const highPriorityTasks = useMemo(() => tasks.filter((t) => t.priority === "high" && !t.completed), [tasks])
@@ -131,9 +136,12 @@ export function DashboardView() {
   const todayEntries = useMemo(() => timeEntries.filter((entry) => entry.date === todayStr), [timeEntries, todayStr])
   const todayHours = useMemo(() => {
     return todayEntries.reduce((total, entry) => {
-      const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
+      // Open/current entries are calculated separately with nowMs so they update live
+      // and are not double-counted when currentEntry is also present in timeEntries.
+      if (!entry.clockOut) return total
+      const end = new Date(entry.clockOut).getTime()
       const start = new Date(entry.clockIn).getTime()
-      const diffMs = end - start - (entry.breakMinutes || 0) * 60 * 1000
+      const diffMs = Math.max(0, end - start - (entry.breakMinutes || 0) * 60 * 1000)
       return total + diffMs / (1000 * 60 * 60)
     }, 0)
   }, [todayEntries])
@@ -142,23 +150,23 @@ export function DashboardView() {
     let hours = todayHours
     if (currentEntry && currentEntry.date === todayStr && !currentEntry.clockOut) {
       const start = new Date(currentEntry.clockIn).getTime()
-      const now = Date.now()
       const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
-      const diffMs = Math.max(0, now - start - breakMs)
+      const diffMs = Math.max(0, nowMs - start - breakMs)
       const currentSessionHours = diffMs / (1000 * 60 * 60)
       hours += currentSessionHours
     }
     return hours
-  }, [todayHours, currentEntry, todayStr])
+  }, [todayHours, currentEntry, todayStr, nowMs])
 
   const completionRate = useMemo(() => {
     return tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0
   }, [tasks.length, completedTasks])
 
-  const workStats = useMemo(() => getTodayWorkStats(), [timeEntries, currentEntry, getTodayWorkStats])
+  // Recompute on each render; the live nowMs ticker triggers renders while active.
+  const workStats = getTodayWorkStats()
 
   // Calculate weekly stats
-  const { weekStart, weekEntries, weeklyHours } = useMemo(() => {
+  const { weekEntries, weeklyHours } = useMemo(() => {
     const start = new Date()
     const dayOfWeek = start.getDay()
     start.setDate(start.getDate() - dayOfWeek)
@@ -168,15 +176,23 @@ export function DashboardView() {
       return parseLocalDateKey(e.date) >= start
     })
     
-    const hours = entries.reduce((total, entry) => {
-      const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
+    let hours = entries.reduce((total, entry) => {
+      if (!entry.clockOut) return total
+      const end = new Date(entry.clockOut).getTime()
       const start = new Date(entry.clockIn).getTime()
       const diffMs = Math.max(0, end - start - (entry.breakMinutes || 0) * 60 * 1000)
       return total + diffMs / (1000 * 60 * 60)
     }, 0)
 
+    if (currentEntry && currentEntry.date >= getLocalDateKey(start) && !currentEntry.clockOut) {
+      const sessionStart = new Date(currentEntry.clockIn).getTime()
+      const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
+      const diffMs = Math.max(0, nowMs - sessionStart - breakMs)
+      hours += diffMs / (1000 * 60 * 60)
+    }
+
     return { weekStart: start, weekEntries: entries, weeklyHours: hours }
-  }, [timeEntries])
+  }, [timeEntries, currentEntry, nowMs])
 
   // Daily breakdown
   const { last7Days, dailyHours } = useMemo(() => {
@@ -191,16 +207,26 @@ export function DashboardView() {
       const dayEntries = timeEntries.filter((e) => {
         return e.date === date
       })
-      return dayEntries.reduce((total, entry) => {
-        const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
+      let dayHours = dayEntries.reduce((total, entry) => {
+        if (!entry.clockOut) return total
+        const end = new Date(entry.clockOut).getTime()
         const start = new Date(entry.clockIn).getTime()
         const diffMs = Math.max(0, end - start - (entry.breakMinutes || 0) * 60 * 1000)
         return total + diffMs / (1000 * 60 * 60)
       }, 0)
+
+      if (currentEntry && currentEntry.date === date && !currentEntry.clockOut) {
+        const start = new Date(currentEntry.clockIn).getTime()
+        const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
+        const diffMs = Math.max(0, nowMs - start - breakMs)
+        dayHours += diffMs / (1000 * 60 * 60)
+      }
+
+      return dayHours
     })
 
     return { last7Days: days, dailyHours: hours }
-  }, [timeEntries])
+  }, [timeEntries, currentEntry, nowMs])
 
   const { avgDailyHours, maxDailyHours, dailyChartData } = useMemo(() => {
     const avg = dailyHours.length > 0 ? (dailyHours.reduce((a, b) => a + b, 0) / dailyHours.length).toFixed(1) : "0"
@@ -250,14 +276,6 @@ export function DashboardView() {
       setActiveView(action as any)
     }
   }
-
-  const joinDate = user
-    ? new Date(user.createdAt).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
-    : ""
 
   const hoursProgress = officeHours > 0 ? Math.min(100, (todayHoursWithCurrent / officeHours) * 100) : 0
 

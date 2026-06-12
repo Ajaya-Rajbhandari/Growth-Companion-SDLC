@@ -1028,7 +1028,8 @@ export const useAppStore = create<AppState>()(
         const today = new Date()
         const todayStr = getLocalDateKey(today)
 
-        // Calculate today's hours
+        // Calculate today's completed hours only. The active/current entry is added below
+        // so it is not double-counted when currentEntry is also present in timeEntries.
         const todayEntries = state.timeEntries.filter((e) => e.date === todayStr)
         let todayHours = todayEntries.reduce((total, entry) => {
           if (entry.clockOut) {
@@ -1548,13 +1549,11 @@ export const useAppStore = create<AppState>()(
       },
 
       createNewChatSession: () => {
-        set((state) => {
-          // Generate a proper UUID v4
-          const newSessionId = crypto.randomUUID()
-          return {
-            currentChatSessionId: newSessionId,
-            chatMessages: [],
-          }
+        // Generate a proper UUID v4
+        const newSessionId = crypto.randomUUID()
+        set({
+          currentChatSessionId: newSessionId,
+          chatMessages: [],
         })
       },
 
@@ -1606,7 +1605,7 @@ export const useAppStore = create<AppState>()(
           }
         } else {
           // Insert new session
-          const { data, error } = await supabase
+          const { error } = await supabase
             .from("chat_sessions")
             .insert(sessionData)
             .select()
@@ -1861,42 +1860,32 @@ export const useAppStore = create<AppState>()(
           throwSupabaseError(checkError, "Failed to check habit log")
         }
 
-        let data: DbHabitLog | null = null
-        let error: any = null
+        const result = existingLog
+          ? await supabase
+              .from("habit_logs")
+              .update({
+                count: count ?? existingLog.count,
+                notes: notes !== undefined ? notes : existingLog.notes,
+              })
+              .eq("habit_id", habitId)
+              .eq("date", date)
+              .eq("user_id", user.id)
+              .select()
+              .single()
+          : await supabase
+              .from("habit_logs")
+              .insert({
+                habit_id: habitId,
+                user_id: user.id,
+                date,
+                count: count || 1,
+                notes: notes || null,
+              })
+              .select()
+              .single()
 
-        if (existingLog) {
-          // Update existing log
-          const { data: updateData, error: updateError } = await supabase
-            .from("habit_logs")
-            .update({
-              count: count ?? existingLog.count,
-              notes: notes !== undefined ? notes : existingLog.notes,
-            })
-            .eq("habit_id", habitId)
-            .eq("date", date)
-            .eq("user_id", user.id)
-            .select()
-            .single()
-
-          data = updateData as DbHabitLog | null
-          error = updateError
-        } else {
-          // Insert new log
-          const { data: insertData, error: insertError } = await supabase
-            .from("habit_logs")
-            .insert({
-              habit_id: habitId,
-              user_id: user.id,
-              date,
-              count: count || 1,
-              notes: notes || null,
-            })
-            .select()
-            .single()
-
-          data = insertData as DbHabitLog | null
-          error = insertError
-        }
+        const data = result.data as DbHabitLog | null
+        const error = result.error
 
         if (error) throwSupabaseError(error, "Failed to log habit")
         
@@ -2048,6 +2037,17 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "app-store",
+      // Bump `version` and handle the old shape in `migrate` whenever the
+      // persisted state shape changes, so existing users' localStorage
+      // rehydrates cleanly instead of corrupting the store.
+      version: 1,
+      migrate: (persistedState, version) => {
+        if (version < 1) {
+          // v0 → v1: no shape change; versioning introduced.
+          return persistedState as AppState
+        }
+        return persistedState as AppState
+      },
     },
   ),
 )
