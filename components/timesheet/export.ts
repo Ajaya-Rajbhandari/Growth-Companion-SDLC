@@ -1,5 +1,6 @@
 import { useAppStore, type TimeEntry } from "@/lib/store"
 import { getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
+import { toast } from "@/components/ui/use-toast"
 import {
   type ViewPeriod,
   calculateDuration,
@@ -14,72 +15,103 @@ import {
 } from "./helpers"
 
 function downloadBlob(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement("a")
-  link.setAttribute("href", url)
-  link.setAttribute("download", fileName)
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
+  try {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.setAttribute("href", url)
+    link.setAttribute("download", fileName)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast({ title: "Export successful", description: `${fileName} downloaded` })
+  } catch (error) {
+    console.error("[export] Download failed:", error)
+    toast({
+      title: "Export failed",
+      description: "Could not download file. Try again.",
+      variant: "destructive",
+    })
+    throw error
+  }
+}
+
+function escapeCSV(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '""'
+  const str = String(value)
+  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+    return `"${str.replace(/"/g, '""')}"` // Escape quotes by doubling
+  }
+  return `"${str}"`
 }
 
 export function exportToCSV(entries: TimeEntry[], viewPeriod: ViewPeriod, selectedDate: Date) {
-  const headers = ["Date", "Clock In", "Clock Out", "Break (min)", "Duration (hours)", "Notes"]
-  const rows = entries.map((entry) => {
-    const duration = calculateDuration(entry.clockIn, entry.clockOut, entry.breakMinutes)
-    const hours = entry.clockOut ? (duration.totalMs / (1000 * 60 * 60)).toFixed(2) : "In Progress"
-    return [
-      entry.date,
-      formatTime(entry.clockIn),
-      entry.clockOut ? formatTime(entry.clockOut) : "-",
-      entry.breakMinutes.toString(),
-      hours,
-      entry.notes || "",
-    ]
-  })
+  try {
+    const headers = ["Date", "Clock In", "Clock Out", "Break (min)", "Duration (hours)", "Notes"]
+    const rows = entries.map((entry) => {
+      const duration = calculateDuration(entry.clockIn, entry.clockOut, entry.breakMinutes)
+      const hours = entry.clockOut ? (duration.totalMs / (1000 * 60 * 60)).toFixed(2) : "In Progress"
+      return [
+        entry.date,
+        formatTime(entry.clockIn),
+        entry.clockOut ? formatTime(entry.clockOut) : "-",
+        entry.breakMinutes.toString(),
+        hours,
+        entry.notes || "",
+      ]
+    })
 
-  const totalHours = calculateTotalHours(entries)
-  const totalBreak = calculateTotalBreakMinutes(entries)
-  rows.push([])
-  rows.push(["Summary", "", "", "", "", ""])
-  rows.push(["Total Hours", "", "", "", totalHours.toFixed(2), ""])
-  rows.push(["Total Break", "", "", totalBreak.toString(), "", ""])
-  rows.push(["Total Entries", "", "", "", entries.length.toString(), ""])
+    const totalHours = calculateTotalHours(entries)
+    const totalBreak = calculateTotalBreakMinutes(entries)
+    rows.push([])
+    rows.push(["Summary", "", "", "", "", ""])
+    rows.push(["Total Hours", "", "", "", totalHours.toFixed(2), ""])
+    rows.push(["Total Break", "", "", totalBreak.toString(), "", ""])
+    rows.push(["Total Entries", "", "", "", entries.length.toString(), ""])
 
-  const csvContent = [headers, ...rows].map((row) => row.map((cell) => `"${cell}"`).join(",")).join("\n")
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-  downloadBlob(blob, `timesheet-${viewPeriod}-${getLocalDateKey(selectedDate)}.csv`)
+    const csvContent = [headers, ...rows].map((row) => row.map(escapeCSV).join(",")).join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    downloadBlob(blob, `timesheet-${viewPeriod}-${getLocalDateKey(selectedDate)}.csv`)
+  } catch (error) {
+    console.error("[exportToCSV]", error)
+    throw error
+  }
 }
 
 export function exportToJSON(entries: TimeEntry[], viewPeriod: ViewPeriod, selectedDate: Date) {
-  const exportData = {
-    period: viewPeriod,
-    periodLabel: getPeriodLabel(selectedDate, viewPeriod),
-    exportDate: new Date().toISOString(),
-    summary: {
-      totalHours: calculateTotalHours(entries).toFixed(2),
-      totalBreakMinutes: calculateTotalBreakMinutes(entries),
-      totalEntries: entries.length,
-    },
-    entries: entries.map((entry) => {
-      const duration = calculateDuration(entry.clockIn, entry.clockOut, entry.breakMinutes)
-      return {
-        ...entry,
-        durationHours: entry.clockOut ? (duration.totalMs / (1000 * 60 * 60)).toFixed(2) : null,
-      }
-    }),
-  }
+  try {
+    const exportData = {
+      period: viewPeriod,
+      periodLabel: getPeriodLabel(selectedDate, viewPeriod),
+      exportDate: new Date().toISOString(),
+      summary: {
+        totalHours: calculateTotalHours(entries).toFixed(2),
+        totalBreakMinutes: calculateTotalBreakMinutes(entries),
+        totalEntries: entries.length,
+      },
+      entries: entries.map((entry) => {
+        const duration = calculateDuration(entry.clockIn, entry.clockOut, entry.breakMinutes)
+        return {
+          ...entry,
+          durationHours: entry.clockOut ? (duration.totalMs / (1000 * 60 * 60)).toFixed(2) : null,
+        }
+      }),
+    }
 
-  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" })
-  downloadBlob(blob, `timesheet-${viewPeriod}-${getLocalDateKey(selectedDate)}.json`)
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" })
+    downloadBlob(blob, `timesheet-${viewPeriod}-${getLocalDateKey(selectedDate)}.json`)
+  } catch (error) {
+    console.error("[exportToJSON]", error)
+    throw error
+  }
 }
 
 export async function exportToExcel(entries: TimeEntry[], viewPeriod: ViewPeriod, selectedDate: Date) {
-  const ExcelJS = await import("exceljs")
-  const workbook = new ExcelJS.Workbook()
-  workbook.creator = "Growth Companion"
-  workbook.created = new Date()
+  try {
+    const ExcelJS = await import("exceljs")
+    const workbook = new ExcelJS.Workbook()
+    workbook.creator = "Growth Companion"
+    workbook.created = new Date()
 
   const addWorksheet = (name: string, rows: (string | number | null)[][], widths: number[]) => {
     const worksheet = workbook.addWorksheet(name)
@@ -317,12 +349,21 @@ export async function exportToExcel(entries: TimeEntry[], viewPeriod: ViewPeriod
     subtaskRows.push(["No subtasks recorded for this period", "", "", "", "", ""])
   }
 
-  addWorksheet("Subtasks", [subtaskHeaders, ...subtaskRows], [12, 25, 25, 12, 12, 12])
+    addWorksheet("Subtasks", [subtaskHeaders, ...subtaskRows], [12, 25, 25, 12, 12, 12])
 
-  const fileName = `timesheet-${viewPeriod}-${getLocalDateKey(selectedDate)}.xlsx`
-  const buffer = await workbook.xlsx.writeBuffer()
-  const blob = new Blob([buffer as BlobPart], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  })
-  downloadBlob(blob, fileName)
+    const fileName = `timesheet-${viewPeriod}-${getLocalDateKey(selectedDate)}.xlsx`
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer as BlobPart], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    })
+    downloadBlob(blob, fileName)
+  } catch (error) {
+    console.error("[exportToExcel]", error)
+    toast({
+      title: "Excel export failed",
+      description: error instanceof Error ? error.message : "Unknown error",
+      variant: "destructive",
+    })
+    throw error
+  }
 }
