@@ -54,9 +54,6 @@ export default withSentryConfig(nextConfig, {
   // Route Sentry requests through a Next.js rewrite to bypass ad-blockers.
   tunnelRoute: "/monitoring",
 
-  // Tree-shake Sentry logger statements to reduce bundle size.
-  disableLogger: true,
-
   // Hide source maps from the generated client bundles.
   sourcemaps: {
     deleteSourcemapsAfterUpload: true,
