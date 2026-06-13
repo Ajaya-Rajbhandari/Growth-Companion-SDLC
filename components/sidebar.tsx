@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { NAV_VIEW_IDS } from "@/lib/feature-flags"
-import { LayoutDashboard, CheckSquare, FileText, Sparkles, Clock, User, LogOut, Sun, Moon, Calendar as CalendarIcon, Target, Flame } from "lucide-react"
+import { LayoutDashboard, CheckSquare, FileText, Sparkles, Clock, User, LogOut, Sun, Moon, Calendar as CalendarIcon, Target, Flame, BarChart3 } from "lucide-react"
 import { useTheme } from "next-themes"
 
 export function Sidebar() {
@@ -30,6 +30,11 @@ export function Sidebar() {
       id: "dashboard" as const,
       label: "Dashboard",
       icon: LayoutDashboard,
+    },
+    {
+      id: "analytics" as const,
+      label: "Analytics",
+      icon: BarChart3,
     },
     {
       id: "tasks" as const,

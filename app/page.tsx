@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/sidebar"
 import { MobileHeader } from "@/components/mobile-header"
 import { MobileBottomNav } from "@/components/mobile-bottom-nav"
 import { DashboardView } from "@/components/dashboard-view"
+import { AnalyticsView } from "@/components/analytics-view"
 import { TasksView } from "@/components/tasks-view"
 import { NotesView } from "@/components/notes-view"
 import { TimesheetView } from "@/components/timesheet-view"
@@ -63,6 +64,7 @@ export default function Home() {
         {/* Main Content - Now has full width without chat sidebar */}
         <main className="flex-1 p-3 sm:p-4 md:p-5 lg:p-6 overflow-x-hidden overflow-y-auto pb-24 lg:pb-8 w-full max-w-full [&>*]:max-w-full min-h-0">
           {activeView === "dashboard" && <DashboardView />}
+          {activeView === "analytics" && isViewEnabled("analytics") && <AnalyticsView />}
           {activeView === "tasks" && isViewEnabled("tasks") && <TasksView />}
           {activeView === "notes" && isViewEnabled("notes") && <NotesView />}
           {activeView === "timesheet" && <TimesheetView />}

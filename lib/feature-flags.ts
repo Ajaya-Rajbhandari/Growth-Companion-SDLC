@@ -10,6 +10,7 @@
 
 export type ViewId =
   | "dashboard"
+  | "analytics"
   | "tasks"
   | "notes"
   | "timesheet"
@@ -113,10 +114,11 @@ export const FEATURE_FLAGS: Record<FeatureName, FeatureFlag> = {
     description: "Eisenhower matrix (BETA)",
   },
   ADVANCED_ANALYTICS: {
-    enabled: false,
-    beta: true,
-    rolloutPercentage: 0,
-    description: "Advanced analytics (BETA)",
+    enabled: true,
+    beta: false,
+    rolloutPercentage: 100,
+    description: "Cross-feature analytics: trends, hours, habits, goals",
+    linkedView: "analytics",
   },
   TEAM_COLLABORATION: {
     enabled: false,
@@ -136,6 +138,7 @@ export const FEATURE_FLAGS: Record<FeatureName, FeatureFlag> = {
 // views (no feature flag); the rest are shown only when their flag is enabled.
 const NAV_ORDER: ViewId[] = [
   "dashboard",
+  "analytics",
   "tasks",
   "notes",
   "timesheet",

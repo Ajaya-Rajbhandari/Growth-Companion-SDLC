@@ -1,13 +1,14 @@
 import type { StateCreator } from "zustand"
 import { supabase } from "../supabase"
+import type { ViewId } from "../feature-flags"
 import type { AppState } from "./index"
 
 export interface UiSlice {
-  activeView: "dashboard" | "tasks" | "notes" | "timesheet" | "calendar" | "goals" | "habits" | "profile"
+  activeView: ViewId
   hasCompletedOnboarding: boolean
   currentOnboardingStep: number
 
-  setActiveView: (view: "dashboard" | "tasks" | "notes" | "timesheet" | "calendar" | "goals" | "habits" | "profile") => void
+  setActiveView: (view: ViewId) => void
   setOnboardingStatus: (completed: boolean) => void
   setOnboardingStep: (step: number) => void
   completeOnboarding: () => Promise<void>

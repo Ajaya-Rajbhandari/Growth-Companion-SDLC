@@ -181,4 +181,7 @@ test("newly enabled features render: tasks, goals, habits", async ({ page }) => 
 
   await page.getByRole("button", { name: "Habits" }).click()
   await expect(page.getByRole("heading", { name: "Habits" })).toBeVisible()
+
+  await page.getByRole("button", { name: "Analytics" }).click()
+  await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible()
 })

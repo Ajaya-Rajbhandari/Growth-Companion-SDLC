@@ -16,6 +16,7 @@ import {
   Target,
   Flame,
   User,
+  BarChart3,
   MoreHorizontal,
   type LucideIcon,
 } from "lucide-react"
@@ -34,6 +35,7 @@ const PRIORITY: ViewId[] = [
   "timesheet",
   "tasks",
   "notes",
+  "analytics",
   "calendar",
   "goals",
   "habits",
@@ -60,6 +62,7 @@ export function MobileBottomNav() {
 
   const meta: Record<ViewId, { label: string; icon: LucideIcon; badge?: number | "•" }> = {
     dashboard: { label: "Dashboard", icon: LayoutDashboard },
+    analytics: { label: "Analytics", icon: BarChart3 },
     tasks: { label: "Tasks", icon: CheckSquare, badge: pendingTasks > 0 ? pendingTasks : undefined },
     notes: { label: "Notes", icon: FileText, badge: notes.length > 0 ? notes.length : undefined },
     timesheet: { label: "Timesheet", icon: Clock, badge: currentEntry ? "•" : undefined },
