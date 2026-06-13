@@ -52,10 +52,10 @@ export const FEATURE_FLAGS: Record<FeatureName, FeatureFlag> = {
     linkedView: "timesheet",
   },
   TASKS: {
-    enabled: false,
+    enabled: true,
     beta: false,
     rolloutPercentage: 100,
-    description: "Task management (currently locked)",
+    description: "Task management with priorities and due dates",
     linkedView: "tasks",
   },
   NOTES: {
@@ -66,17 +66,17 @@ export const FEATURE_FLAGS: Record<FeatureName, FeatureFlag> = {
     linkedView: "notes",
   },
   GOALS: {
-    enabled: false,
+    enabled: true,
     beta: false,
     rolloutPercentage: 100,
-    description: "Goal tracking (currently locked)",
+    description: "Goal tracking with milestones",
     linkedView: "goals",
   },
   HABITS: {
-    enabled: false,
+    enabled: true,
     beta: false,
     rolloutPercentage: 100,
-    description: "Habit tracking (currently locked)",
+    description: "Habit tracking with streaks and statistics",
     linkedView: "habits",
   },
   CALENDAR: {
@@ -132,15 +132,29 @@ export const FEATURE_FLAGS: Record<FeatureName, FeatureFlag> = {
   },
 }
 
-// Locked views based on feature flags
+// Canonical navigation order. "dashboard" and "profile" are always-on core
+// views (no feature flag); the rest are shown only when their flag is enabled.
+const NAV_ORDER: ViewId[] = [
+  "dashboard",
+  "tasks",
+  "notes",
+  "timesheet",
+  "calendar",
+  "goals",
+  "habits",
+  "profile",
+]
+
+// Views hidden because their feature flag is disabled.
 export const LOCKED_VIEWS = Object.entries(FEATURE_FLAGS)
   .filter(([, flag]) => !flag.enabled && flag.linkedView)
   .map(([, flag]) => flag.linkedView!)
 
-// Active views in navigation
-export const NAV_VIEW_IDS: ViewId[] = Object.entries(FEATURE_FLAGS)
-  .filter(([, flag]) => flag.enabled && flag.linkedView)
-  .map(([, flag]) => flag.linkedView!)
+// Views shown in the sidebar / bottom nav, in canonical order. Core views
+// (dashboard, profile) are always included; flagged views only when enabled.
+export const NAV_VIEW_IDS: ViewId[] = NAV_ORDER.filter(
+  (view) => !LOCKED_VIEWS.includes(view),
+)
 
 // Check if feature is enabled for a user
 export function isFeatureEnabled(featureName: FeatureName, userId?: string): boolean {
