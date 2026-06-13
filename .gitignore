@@ -3,6 +3,10 @@
 # dependencies
 /node_modules
 
+# sentry
+.sentryclirc
+.env.sentry-build-plugin
+
 # next.js
 /.next/
 /out/
