@@ -159,3 +159,26 @@ test("core app smoke: login, dashboard, notes, and timesheet task switch", async
   await expect(page.getByText("Smoke switched task").first()).toBeVisible()
   await expect(page.getByText("Initial smoke task").first()).toBeVisible()
 })
+
+test("newly enabled features render: tasks, goals, habits", async ({ page }) => {
+  await mockSupabase(page)
+
+  await page.goto("/auth")
+  await page.getByPlaceholder("you@example.com").fill(user.email)
+  await page.getByPlaceholder("Enter your password").fill("password123")
+  await page.getByRole("button", { name: "Sign In" }).click()
+
+  await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), E2E!/ })).toBeVisible()
+
+  // Each view is gated behind its feature flag + nav entry. Navigating to it and
+  // seeing its heading proves the lock→enable wiring works end-to-end.
+  await page.getByRole("button", { name: "Tasks" }).click()
+  await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible()
+  await expect(page.getByText("Smoke task from API").first()).toBeVisible()
+
+  await page.getByRole("button", { name: "Goals" }).click()
+  await expect(page.getByRole("heading", { name: "Goals" })).toBeVisible()
+
+  await page.getByRole("button", { name: "Habits" }).click()
+  await expect(page.getByRole("heading", { name: "Habits" })).toBeVisible()
+})
