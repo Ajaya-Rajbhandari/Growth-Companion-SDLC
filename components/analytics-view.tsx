@@ -10,6 +10,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } fro
 import { calculateDuration } from "@/components/timesheet/helpers"
 import { getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
 import { Clock, CheckSquare, Target, Flame, TrendingUp, CalendarRange } from "lucide-react"
+import { AICoachCard } from "@/components/ai-coach-card"
 
 const WINDOW_DAYS = 30
 const MS_PER_HOUR = 1000 * 60 * 60
@@ -160,6 +161,8 @@ export function AnalyticsView() {
           Cross-feature trends over the last {WINDOW_DAYS} days.
         </p>
       </div>
+
+      <AICoachCard />
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 sm:gap-3">
