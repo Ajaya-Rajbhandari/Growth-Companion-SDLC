@@ -4,7 +4,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js"
 
 // Builds a Supabase server client bound to the request's auth cookies, so calls
 // run as the signed-in user (RLS / auth.uid() apply). Null if env is missing.
-async function createServerSupabase(): Promise<SupabaseClient | null> {
+export async function createServerSupabase(): Promise<SupabaseClient | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!supabaseUrl || !supabaseAnonKey) return null

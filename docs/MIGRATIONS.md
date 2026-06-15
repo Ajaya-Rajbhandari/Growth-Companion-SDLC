@@ -25,6 +25,7 @@ The following migration files need to be run in order:
 11. `migrations/011_admin_cms.sql` - Adds admin CMS data functions (list users, recent events, grant/revoke admin).
 12. `migrations/012_admin_powerups.sql` - Adds admin user drill-down + AI feedback inbox functions.
 13. `migrations/013_feature_flags.sql` - Adds the `feature_flags` table + admin toggle RPC for live feature flags.
+14. `migrations/014_push_subscriptions.sql` - Adds the `push_subscriptions` table for Web Push (closed-app reminders).
 
 ## Steps to Run Migrations
 
