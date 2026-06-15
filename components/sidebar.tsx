@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { navViewIdsFrom } from "@/lib/feature-flags"
+import { NotificationCenter } from "@/components/notification-center"
 import { LayoutDashboard, CheckSquare, FileText, Sparkles, Clock, User, LogOut, Sun, Moon, Calendar as CalendarIcon, Target, Flame, BarChart3 } from "lucide-react"
 import { useTheme } from "next-themes"
 
@@ -85,10 +86,11 @@ export function Sidebar() {
           <div className="size-11 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/20">
             <Sparkles className="size-5 text-primary-foreground" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="font-bold tracking-tight text-sidebar-foreground">Companion</h1>
             <p className="text-xs text-muted-foreground">Growth command center</p>
           </div>
+          <NotificationCenter />
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
 import { Sparkles, Sun, Moon } from "lucide-react"
 import { useTheme } from "next-themes"
+import { NotificationCenter } from "@/components/notification-center"
 
 export function MobileHeader() {
   const { currentEntry } = useAppStore(
@@ -28,9 +29,12 @@ export function MobileHeader() {
         )}
       </div>
 
-      <Button variant="ghost" size="icon" onClick={toggleTheme} className="min-w-[44px] min-h-[44px] rounded-xl">
-        {isDark ? <Sun className="size-5" /> : <Moon className="size-5" />}
-      </Button>
+      <div className="flex items-center gap-1">
+        <NotificationCenter />
+        <Button variant="ghost" size="icon" onClick={toggleTheme} className="min-w-[44px] min-h-[44px] rounded-xl">
+          {isDark ? <Sun className="size-5" /> : <Moon className="size-5" />}
+        </Button>
+      </div>
     </header>
   )
 }
