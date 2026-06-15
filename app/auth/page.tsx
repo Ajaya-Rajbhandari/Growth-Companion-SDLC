@@ -3,6 +3,7 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useAppStore } from "@/lib/store"
+import { supabase } from "@/lib/supabase"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,12 +25,13 @@ export default function AuthPage() {
         authInitialized: state.authInitialized,
       })),
     )
-  const [mode, setMode] = useState<"login" | "signup">("login")
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
   const [loading, setLoading] = useState(false)
   const [confirmationMessage, setConfirmationMessage] = useState("")
+  const [canResend, setCanResend] = useState(false)
 
   // Check for error in URL params (from auth callback) - client side
   useEffect(() => {
@@ -59,8 +61,18 @@ export default function AuthPage() {
     setLoading(true)
     setAuthError("")
     setConfirmationMessage("")
+    setCanResend(false)
 
     try {
+      if (mode === "forgot") {
+        const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset`,
+        })
+        if (resetErr) throw resetErr
+        setConfirmationMessage(`If an account exists for ${email}, a password-reset link is on its way.`)
+        return
+      }
+
       if (mode === "login") {
         await login(email, password)
       } else {
@@ -71,6 +83,7 @@ export default function AuthPage() {
           setConfirmationMessage(
             `We've sent a confirmation link to ${email}. Please confirm your email, then sign in.`,
           )
+          setCanResend(true)
           setMode("login")
           return
         }
@@ -88,6 +101,15 @@ export default function AuthPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleResendConfirmation = async () => {
+    setLoading(true)
+    setAuthError("")
+    const { error } = await supabase.auth.resend({ type: "signup", email })
+    setLoading(false)
+    if (error) setAuthError(error.message)
+    else setConfirmationMessage(`Confirmation email resent to ${email}.`)
   }
 
   const handleGoogleSignIn = async () => {
@@ -118,35 +140,42 @@ export default function AuthPage() {
       <Card className="w-full max-w-md bg-card border-border">
         <CardHeader className="space-y-2 text-center p-4 sm:p-6">
           <CardTitle className="text-xl md:text-2xl font-bold text-foreground">
-            {mode === "login" ? "Welcome Back" : "Get Started"}
+            {mode === "login" ? "Welcome Back" : mode === "signup" ? "Get Started" : "Reset Password"}
           </CardTitle>
           <p className="text-muted-foreground text-xs sm:text-sm">
-            {mode === "login" ? "Sign in to your account" : "Create your account to begin"}
+            {mode === "login"
+              ? "Sign in to your account"
+              : mode === "signup"
+                ? "Create your account to begin"
+                : "Enter your email and we'll send a reset link"}
           </p>
         </CardHeader>
         <CardContent className="space-y-4 sm:space-y-5 p-4 sm:p-6">
-          {/* Google Sign-In Button */}
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full bg-background border-border hover:bg-secondary text-foreground text-sm md:text-base h-10 md:h-11"
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-          >
-            <Chrome className="w-4 h-4 mr-2 flex-shrink-0" />
-            <span className="truncate">Continue with Google</span>
-          </Button>
+          {mode !== "forgot" && (
+            <>
+              {/* Google Sign-In Button */}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full bg-background border-border hover:bg-secondary text-foreground text-sm md:text-base h-10 md:h-11"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+              >
+                <Chrome className="w-4 h-4 mr-2 flex-shrink-0" />
+                <span className="truncate">Continue with Google</span>
+              </Button>
 
-
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border"></div>
-            </div>
-            <div className="relative flex justify-center text-xs md:text-sm">
-              <span className="px-2 bg-card text-muted-foreground">Or with email</span>
-            </div>
-          </div>
+              {/* Divider */}
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border"></div>
+                </div>
+                <div className="relative flex justify-center text-xs md:text-sm">
+                  <span className="px-2 bg-card text-muted-foreground">Or with email</span>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
@@ -182,27 +211,57 @@ export default function AuthPage() {
               </div>
             </div>
 
-            <div>
-              <label className="text-xs md:text-sm font-medium text-foreground block mb-1.5 md:mb-2">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input
-                  type="password"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="bg-input border-border text-sm pl-10 h-10 md:h-11"
-                  disabled={loading}
-                />
+            {mode !== "forgot" && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5 md:mb-2">
+                  <label className="text-xs md:text-sm font-medium text-foreground">Password</label>
+                  {mode === "login" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode("forgot")
+                        setAuthError("")
+                        setConfirmationMessage("")
+                        setCanResend(false)
+                      }}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    type="password"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="bg-input border-border text-sm pl-10 h-10 md:h-11"
+                    disabled={loading}
+                  />
+                </div>
+                {mode === "signup" && <p className="text-xs text-muted-foreground mt-1">At least 6 characters</p>}
               </div>
-              {mode === "signup" && <p className="text-xs text-muted-foreground mt-1">At least 6 characters</p>}
-            </div>
+            )}
 
             {/* Confirmation Display */}
             {confirmationMessage && (
-              <div className="flex items-start gap-2 p-2.5 md:p-3 bg-primary/10 border border-primary/20 rounded-lg">
-                <Mail className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-                <p className="text-xs md:text-sm text-foreground">{confirmationMessage}</p>
+              <div className="p-2.5 md:p-3 bg-primary/10 border border-primary/20 rounded-lg space-y-2">
+                <div className="flex items-start gap-2">
+                  <Mail className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                  <p className="text-xs md:text-sm text-foreground">{confirmationMessage}</p>
+                </div>
+                {canResend && (
+                  <button
+                    type="button"
+                    onClick={handleResendConfirmation}
+                    disabled={loading}
+                    className="text-xs text-primary hover:underline ml-6 disabled:opacity-50"
+                  >
+                    Resend confirmation email
+                  </button>
+                )}
               </div>
             )}
 
@@ -220,7 +279,13 @@ export default function AuthPage() {
               className="w-full bg-primary text-primary-foreground text-sm md:text-base h-10 md:h-11 font-medium"
               disabled={loading}
             >
-              {loading ? "Loading..." : mode === "login" ? "Sign In" : "Create Account"}
+              {loading
+                ? "Loading..."
+                : mode === "login"
+                  ? "Sign In"
+                  : mode === "signup"
+                    ? "Create Account"
+                    : "Send reset link"}
             </Button>
           </form>
 
@@ -231,7 +296,11 @@ export default function AuthPage() {
             </div>
             <div className="relative flex justify-center text-xs md:text-sm">
               <span className="px-2 bg-card text-muted-foreground">
-                {mode === "login" ? "Don't have an account?" : "Already have an account?"}
+                {mode === "login"
+                  ? "Don't have an account?"
+                  : mode === "signup"
+                    ? "Already have an account?"
+                    : "Remembered your password?"}
               </span>
             </div>
           </div>
@@ -244,9 +313,10 @@ export default function AuthPage() {
               setMode(mode === "login" ? "signup" : "login")
               setAuthError("")
               setConfirmationMessage("")
+              setCanResend(false)
             }}
           >
-            {mode === "login" ? "Create Account" : "Sign In"}
+            {mode === "login" ? "Create Account" : mode === "signup" ? "Sign In" : "Back to Sign In"}
           </Button>
 
           {/* Terms & Privacy */}

@@ -3,12 +3,12 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Shield, Lock, Mail, AlertCircle, ArrowLeft, Chrome } from "lucide-react"
+import { Shield, Lock, Mail, AlertCircle, Chrome } from "lucide-react"
+import { ADMIN_SESSION_START, ADMIN_REMEMBER } from "@/components/admin/admin-session-guard"
 
 type Screen = "checking" | "form" | "noAccess"
 
@@ -24,6 +24,20 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [remember, setRemember] = useState(false)
+  const [expiredNotice, setExpiredNotice] = useState("")
+
+  const markAdminSession = () => {
+    localStorage.setItem(ADMIN_SESSION_START, String(Date.now()))
+    localStorage.setItem(ADMIN_REMEMBER, remember ? "1" : "0")
+  }
+
+  // Show why the previous admin session ended (set by the session guard).
+  useEffect(() => {
+    const expired = new URLSearchParams(window.location.search).get("expired")
+    if (expired === "idle") setExpiredNotice("Your admin session timed out after inactivity. Please sign in again.")
+    else if (expired === "week") setExpiredNotice("Your admin session reached its 7-day limit. Please sign in again.")
+  }, [])
 
   // If already signed in, route admins straight into the panel; show a clear
   // "no access" state for signed-in non-admins instead of a blank redirect.
@@ -54,6 +68,7 @@ export default function AdminLoginPage() {
       return
     }
     if (await callerIsAdmin()) {
+      markAdminSession()
       router.replace("/admin")
       return
     }
@@ -71,6 +86,9 @@ export default function AdminLoginPage() {
 
   const handleGoogle = async () => {
     setError("")
+    // Persist the "remember me" choice across the OAuth redirect (the session
+    // start is stamped by the guard when the admin lands on /admin).
+    localStorage.setItem(ADMIN_REMEMBER, remember ? "1" : "0")
     // Return to /admin/login after OAuth; this page then verifies admin and routes.
     const { error: oauthErr } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -113,6 +131,12 @@ export default function AdminLoginPage() {
 
             {screen === "form" && (
               <div className="space-y-4">
+                {expiredNotice && (
+                  <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                    <AlertCircle className="size-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-foreground">{expiredNotice}</p>
+                  </div>
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -164,6 +188,16 @@ export default function AdminLoginPage() {
                   </div>
                 </div>
 
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={remember}
+                    onChange={(e) => setRemember(e.target.checked)}
+                    className="size-4 rounded border-border accent-primary"
+                  />
+                  Remember me (skip the 30-min inactivity timeout)
+                </label>
+
                 {error && (
                   <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
                     <AlertCircle className="size-4 text-destructive flex-shrink-0 mt-0.5" />
@@ -179,13 +213,6 @@ export default function AdminLoginPage() {
             )}
           </CardContent>
         </Card>
-
-        <div className="text-center mt-4">
-          <Link href="/" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
-            <ArrowLeft className="size-3" />
-            Back to app
-          </Link>
-        </div>
       </div>
     </div>
   )

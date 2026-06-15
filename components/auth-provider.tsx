@@ -29,7 +29,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 })
                 setOnboardingStatus(Boolean(session.user.user_metadata?.hasCompletedOnboarding))
                 useAppStore.getState().fetchInitialData()
-                useAppStore.getState().checkAdminStatus()
             } else {
                 setUser(null)
             }
@@ -49,7 +48,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 })
                 setOnboardingStatus(Boolean(session.user.user_metadata?.hasCompletedOnboarding))
                 useAppStore.getState().fetchInitialData()
-                useAppStore.getState().checkAdminStatus()
             } else {
                 setUser(null)
             }
