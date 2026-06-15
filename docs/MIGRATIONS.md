@@ -20,6 +20,9 @@ The following migration files need to be run in order:
 6. `migrations/006_add_time_entry_subtasks.sql` - Adds subtask history storage to time_entries
 7. `migrations/007_add_completed_to_tasks.sql` - Adds the `completed` boolean column to tasks
 8. `migrations/008_cleanup_legacy_task_columns.sql` - Drops unused legacy columns from tasks (skill_id, description, estimated_minutes, difficulty, source_task_id, is_active). **Destructive** — see file header.
+9. `migrations/009_add_analytics_events.sql` - Creates the `analytics_events` table for global product analytics (see scripts/analytics-queries.sql).
+10. `migrations/010_add_admin_analytics.sql` - Adds the `admins` allowlist + SECURITY DEFINER functions powering the in-app Admin dashboard. **After running, add yourself as an admin** (see file header).
+11. `migrations/011_admin_cms.sql` - Adds admin CMS data functions (list users, recent events, grant/revoke admin).
 
 ## Steps to Run Migrations
 

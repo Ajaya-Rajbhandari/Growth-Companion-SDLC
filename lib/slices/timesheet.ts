@@ -10,6 +10,7 @@ import {
   type DbTimeEntry,
   type DbWorkTemplate,
 } from "../mappers"
+import { trackEvent } from "../analytics"
 import type { BreakPeriod, TimeCategory, TimeEntry, WorkTemplate } from "../types"
 import type { AppState } from "./index"
 
@@ -167,6 +168,7 @@ export const createTimesheetSlice: StateCreator<
         currentEntry: newEntry,
         timeEntries: [newEntry, ...state.timeEntries],
       }))
+      trackEvent("clock_in", user.id, { hasTitle: !!title, hasCategory: !!category })
     }
   },
   clockOut: async () => {
@@ -202,6 +204,15 @@ export const createTimesheetSlice: StateCreator<
       set({
         currentEntry: null,
         activeBreak: null,
+      })
+      const workedMinutes = Math.max(
+        0,
+        Math.round((Date.now() - new Date(currentEntry.clockIn).getTime()) / 60000) - totalBreakMinutes,
+      )
+      trackEvent("clock_out", user.id, {
+        workedMinutes,
+        breakMinutes: totalBreakMinutes,
+        taskCount: (currentEntry.subtasks?.length || 0) + 1,
       })
     }
   },

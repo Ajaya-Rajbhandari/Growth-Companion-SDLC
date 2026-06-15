@@ -31,6 +31,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { cn, getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
 import { format, isToday, isTomorrow, parseISO, differenceInDays } from "date-fns"
 import { BreakDialog, type BreakType } from "@/components/timesheet/dialogs"
+import { toast } from "@/components/ui/use-toast"
 
 function formatMinutes(totalMinutes: number): string {
   const hours = Math.floor(totalMinutes / 60)
@@ -321,15 +322,27 @@ export function DashboardView() {
     return "Good evening"
   }, [])
 
+  // Surface clock/break failures (e.g. "already clocked in today") as a friendly
+  // toast instead of an unhandled promise rejection / dev error overlay.
+  const runTimeAction = (label: string, fn: () => Promise<void>) => {
+    fn().catch((error) => {
+      toast({
+        title: `Couldn't ${label}`,
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    })
+  }
+
   const handleQuickAction = (action: string) => {
     if (action === "clock-in") {
-      clockIn()
+      runTimeAction("clock in", clockIn)
     } else if (action === "clock-out") {
-      clockOut()
+      runTimeAction("clock out", clockOut)
     } else if (action === "take-break") {
       setBreakDialogOpen(true)
     } else if (action === "resume") {
-      void endBreak()
+      runTimeAction("resume work", endBreak)
     } else if (isViewEnabled(action as ViewId)) {
       setActiveView(action as any)
     }

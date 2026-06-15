@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand"
 import { supabase } from "../supabase"
 import { getLocalDateKey } from "../utils"
 import { mapTaskFromDb, throwSupabaseError, type DbTask } from "../mappers"
+import { trackEvent } from "../analytics"
 import type { Task } from "../types"
 import type { AppState } from "./index"
 
@@ -67,6 +68,7 @@ export const createTasksSlice: StateCreator<
       set((state) => ({
         tasks: [mapTaskFromDb(data as DbTask), ...state.tasks],
       }))
+      trackEvent("task_created", user.id, { priority: task.priority, hasDueDate: !!task.dueDate })
     }
   },
   toggleTask: async (id, completed) => {

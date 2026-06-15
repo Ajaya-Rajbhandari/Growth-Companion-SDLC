@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand"
 import { supabase } from "../supabase"
+import { trackEvent } from "../analytics"
 import type { ViewId } from "../feature-flags"
 import type { AppState } from "./index"
 
@@ -43,7 +44,9 @@ export const createUiSlice: StateCreator<
       data: { hasCompletedOnboarding: true },
     })
     if (error) throw error
+    const completedAtStep = get().currentOnboardingStep
     set({ hasCompletedOnboarding: true, currentOnboardingStep: 0 })
+    trackEvent("onboarding_completed", get().user?.id, { step: completedAtStep })
   },
 
   skipOnboarding: async () => {
@@ -51,6 +54,8 @@ export const createUiSlice: StateCreator<
       data: { hasCompletedOnboarding: true },
     })
     if (error) throw error
+    const skippedAtStep = get().currentOnboardingStep
     set({ hasCompletedOnboarding: true, currentOnboardingStep: 0 })
+    trackEvent("onboarding_skipped", get().user?.id, { step: skippedAtStep })
   },
 })

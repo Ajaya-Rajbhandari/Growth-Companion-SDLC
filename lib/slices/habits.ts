@@ -8,6 +8,7 @@ import {
   type DbHabit,
   type DbHabitLog,
 } from "../mappers"
+import { trackEvent } from "../analytics"
 import type { Habit, HabitLog } from "../types"
 import type { AppState } from "./index"
 
@@ -62,6 +63,7 @@ export const createHabitsSlice: StateCreator<
       set((state) => ({
         habits: [newHabit, ...state.habits],
       }))
+      trackEvent("habit_created", user.id, { frequency: habit.frequency })
     }
   },
 

@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand"
 import { supabase } from "../supabase"
 import { mapGoalFromDb, throwSupabaseError, type DbGoal } from "../mappers"
+import { trackEvent } from "../analytics"
 import type { Goal, Milestone } from "../types"
 import type { AppState } from "./index"
 
@@ -48,6 +49,7 @@ export const createGoalsSlice: StateCreator<
       set((state) => ({
         goals: [newGoal, ...state.goals],
       }))
+      trackEvent("goal_created", user.id, { hasTargetDate: !!goal.targetDate, category: goal.category || null })
     }
   },
 
