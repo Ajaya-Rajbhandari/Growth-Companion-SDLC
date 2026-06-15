@@ -9,6 +9,7 @@ import { toast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import { computeNotifications, type NotificationItem } from "@/lib/notifications"
 import { REMINDERS_ENABLED_KEY } from "@/components/reminder-notifier"
+import { subscribeToPush, unsubscribeFromPush, pushSupported } from "@/lib/push"
 
 const ICONS = {
   overdue: AlertCircle,
@@ -60,6 +61,7 @@ export function NotificationCenter() {
     if (remindersOn) {
       localStorage.setItem(REMINDERS_ENABLED_KEY, "0")
       setRemindersOn(false)
+      await unsubscribeFromPush()
       return
     }
     const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission()
@@ -69,7 +71,14 @@ export function NotificationCenter() {
     }
     localStorage.setItem(REMINDERS_ENABLED_KEY, "1")
     setRemindersOn(true)
-    toast({ title: "Reminders on", description: "You'll get browser nudges for overdue & due-today items." })
+    // Also register for closed-app push (best effort; needs VAPID configured).
+    const pushed = pushSupported() ? await subscribeToPush().catch(() => false) : false
+    toast({
+      title: "Reminders on",
+      description: pushed
+        ? "Browser nudges + daily push even when the app is closed."
+        : "You'll get browser nudges while the app is open.",
+    })
   }
 
   return (
