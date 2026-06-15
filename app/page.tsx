@@ -13,6 +13,7 @@ import { GoalsView } from "@/components/goals-view"
 import { HabitsView } from "@/components/habits-view"
 import { ProfileView } from "@/components/profile-view"
 import { FloatingAssistant } from "@/components/floating-assistant"
+import { ReminderNotifier } from "@/components/reminder-notifier"
 import { OnboardingModal } from "@/components/onboarding-modal"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
@@ -81,6 +82,7 @@ export default function Home() {
       <MobileBottomNav />
 
       <FloatingAssistant />
+      <ReminderNotifier />
       <OnboardingModal />
     </div>
   )
