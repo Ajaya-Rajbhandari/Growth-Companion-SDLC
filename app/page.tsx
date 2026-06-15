@@ -18,18 +18,20 @@ import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
-import { LOCKED_VIEWS, isViewEnabled } from "@/lib/feature-flags"
+import { isViewEnabledFrom, lockedViewsFrom } from "@/lib/feature-flags"
 
 export default function Home() {
-  const { activeView, setActiveView, isLoggedIn, authInitialized } = useAppStore(
+  const { activeView, setActiveView, isLoggedIn, authInitialized, featureOverrides } = useAppStore(
     useShallow((state) => ({
       activeView: state.activeView,
       setActiveView: state.setActiveView,
       isLoggedIn: state.isLoggedIn,
       authInitialized: state.authInitialized,
+      featureOverrides: state.featureOverrides,
     })),
   )
   const router = useRouter()
+  const isViewEnabled = (view: typeof activeView) => isViewEnabledFrom(view, featureOverrides)
 
   useEffect(() => {
     if (authInitialized && !isLoggedIn) {
@@ -39,10 +41,10 @@ export default function Home() {
 
   // Redirect to timesheet when a locked view is selected (e.g. from persisted state)
   useEffect(() => {
-    if (LOCKED_VIEWS.includes(activeView as (typeof LOCKED_VIEWS)[number])) {
+    if (lockedViewsFrom(featureOverrides).includes(activeView)) {
       setActiveView("timesheet")
     }
-  }, [activeView, setActiveView])
+  }, [activeView, setActiveView, featureOverrides])
 
   if (!authInitialized || !isLoggedIn) {
     return null

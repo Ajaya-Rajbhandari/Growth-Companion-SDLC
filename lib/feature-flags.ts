@@ -189,3 +189,31 @@ export function isFeatureEnabled(featureName: FeatureName, userId?: string): boo
 export function isViewEnabled(view: ViewId): boolean {
   return !LOCKED_VIEWS.includes(view)
 }
+
+// ---------------------------------------------------------------------------
+// Runtime (DB-backed) overrides — admins flip features live without a deploy.
+// A `feature_flags` row's `enabled` wins over the static default above.
+// ---------------------------------------------------------------------------
+export type FlagOverrides = Partial<Record<FeatureName, boolean>>
+
+/** Effective enabled state: DB override wins over the static default. */
+export function effectiveEnabled(name: FeatureName, overrides: FlagOverrides = {}): boolean {
+  return overrides[name] ?? FEATURE_FLAGS[name]?.enabled ?? false
+}
+
+/** Views hidden because their feature is (effectively) disabled. */
+export function lockedViewsFrom(overrides: FlagOverrides = {}): ViewId[] {
+  return (Object.entries(FEATURE_FLAGS) as [FeatureName, FeatureFlag][])
+    .filter(([name, flag]) => flag.linkedView && !effectiveEnabled(name, overrides))
+    .map(([, flag]) => flag.linkedView!)
+}
+
+/** Nav views in canonical order given the current overrides. */
+export function navViewIdsFrom(overrides: FlagOverrides = {}): ViewId[] {
+  const locked = lockedViewsFrom(overrides)
+  return NAV_ORDER.filter((view) => !locked.includes(view))
+}
+
+export function isViewEnabledFrom(view: ViewId, overrides: FlagOverrides = {}): boolean {
+  return !lockedViewsFrom(overrides).includes(view)
+}

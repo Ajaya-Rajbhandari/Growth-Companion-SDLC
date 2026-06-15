@@ -16,6 +16,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     )
 
     useEffect(() => {
+        // Load DB feature-flag overrides (public-read) so live admin toggles apply.
+        useAppStore.getState().loadFeatureFlags()
+
         // 1. Check current session
         let isMounted = true
         supabase.auth.getSession().then(({ data: { session } }) => {
