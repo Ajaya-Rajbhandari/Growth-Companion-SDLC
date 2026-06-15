@@ -21,6 +21,7 @@ import {
   type DbWorkTemplate,
 } from "../mappers"
 import type { User } from "../types"
+import { deriveDisplayName } from "../utils"
 import type { AppState } from "./index"
 
 export interface AuthSlice {
@@ -31,7 +32,7 @@ export interface AuthSlice {
 
   fetchInitialData: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
-  signup: (name: string, email: string, password: string) => Promise<void>
+  signup: (name: string, email: string, password: string) => Promise<{ needsConfirmation: boolean }>
   loginWithGoogle: () => Promise<void>
   logout: () => Promise<void>
   setUser: (user: User | null) => void
@@ -119,7 +120,7 @@ export const createAuthSlice: StateCreator<
     if (data.user) {
       const user: User = {
         id: data.user.id,
-        name: data.user.user_metadata.full_name || data.user.email?.split("@")[0] || "User",
+        name: deriveDisplayName(data.user.user_metadata.full_name, data.user.email),
         email: data.user.email || "",
         createdAt: data.user.created_at,
       }
@@ -144,15 +145,25 @@ export const createAuthSlice: StateCreator<
       throw error
     }
 
+    // When email confirmation is enabled, signUp returns a user but no session.
+    // Without a session, every authenticated call (updateUser, fetchInitialData,
+    // the assistant API) fails with "Auth session missing". Don't treat this as
+    // logged in — the caller surfaces a "check your email" message instead.
+    if (!data.session) {
+      return { needsConfirmation: true }
+    }
+
     if (data.user) {
       const user: User = {
         id: data.user.id,
-        name: name,
+        name: deriveDisplayName(name, data.user.email),
         email: data.user.email || "",
         createdAt: data.user.created_at,
       }
       set({ user, isLoggedIn: true, authError: "" })
     }
+
+    return { needsConfirmation: false }
   },
 
   loginWithGoogle: async () => {

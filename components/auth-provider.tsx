@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import { deriveDisplayName } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 
@@ -22,7 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (session?.user) {
                 setUser({
                     id: session.user.id,
-                    name: session.user.user_metadata.full_name || session.user.email?.split("@")[0] || "User",
+                    name: deriveDisplayName(session.user.user_metadata.full_name, session.user.email),
                     email: session.user.email || "",
                     createdAt: session.user.created_at,
                 })
@@ -41,7 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (session?.user) {
                 setUser({
                     id: session.user.id,
-                    name: session.user.user_metadata.full_name || session.user.email?.split("@")[0] || "User",
+                    name: deriveDisplayName(session.user.user_metadata.full_name, session.user.email),
                     email: session.user.email || "",
                     createdAt: session.user.created_at,
                 })

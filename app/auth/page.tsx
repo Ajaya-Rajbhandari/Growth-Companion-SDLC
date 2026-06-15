@@ -29,6 +29,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
   const [loading, setLoading] = useState(false)
+  const [confirmationMessage, setConfirmationMessage] = useState("")
 
   // Check for error in URL params (from auth callback) - client side
   useEffect(() => {
@@ -57,18 +58,33 @@ export default function AuthPage() {
     e.preventDefault()
     setLoading(true)
     setAuthError("")
+    setConfirmationMessage("")
 
     try {
       if (mode === "login") {
         await login(email, password)
       } else {
-        await signup(name, email, password)
+        const { needsConfirmation } = await signup(name, email, password)
+        if (needsConfirmation) {
+          // No session yet — the user must confirm their email before logging in.
+          // Don't redirect into the app, or authenticated calls will fail.
+          setConfirmationMessage(
+            `We've sent a confirmation link to ${email}. Please confirm your email, then sign in.`,
+          )
+          setMode("login")
+          return
+        }
       }
 
       router.push("/")
     } catch (error: any) {
-      console.error("Auth error:", error)
-      setAuthError(error.message || "Authentication failed. Please try again.")
+      // Surface the failure inline. Invalid-credentials / email-exists / rate-limit
+      // are normal user errors (AuthApiError) — logging them with console.error
+      // trips the Next.js dev error overlay, so only warn for unexpected failures.
+      setAuthError(error?.message || "Authentication failed. Please try again.")
+      if (error?.name !== "AuthApiError") {
+        console.warn("Unexpected auth error:", error)
+      }
     } finally {
       setLoading(false)
     }
@@ -80,8 +96,10 @@ export default function AuthPage() {
     try {
       await loginWithGoogle()
     } catch (error: any) {
-      console.error("Google sign-in error:", error)
-      setAuthError(error.message || "Google sign-in failed. Please try again.")
+      setAuthError(error?.message || "Google sign-in failed. Please try again.")
+      if (error?.name !== "AuthApiError") {
+        console.warn("Unexpected Google sign-in error:", error)
+      }
       setLoading(false)
     }
   }
@@ -180,6 +198,14 @@ export default function AuthPage() {
               {mode === "signup" && <p className="text-xs text-muted-foreground mt-1">At least 6 characters</p>}
             </div>
 
+            {/* Confirmation Display */}
+            {confirmationMessage && (
+              <div className="flex items-start gap-2 p-2.5 md:p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                <Mail className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                <p className="text-xs md:text-sm text-foreground">{confirmationMessage}</p>
+              </div>
+            )}
+
             {/* Error Display */}
             {authError && (
               <div className="flex items-start gap-2 p-2.5 md:p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
@@ -217,6 +243,7 @@ export default function AuthPage() {
             onClick={() => {
               setMode(mode === "login" ? "signup" : "login")
               setAuthError("")
+              setConfirmationMessage("")
             }}
           >
             {mode === "login" ? "Create Account" : "Sign In"}

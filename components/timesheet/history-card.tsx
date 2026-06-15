@@ -31,12 +31,14 @@ import {
   getBreakTypeBadgeColor,
   getBreakTypeLabel,
   getPeriodLabel,
+  formatTimeRange,
+  getSessionHeadline,
   groupEntriesByDate,
-  groupEntriesByMonth,
   groupEntriesByWeek,
-  groupEntriesByYear,
   navigatePeriod,
 } from "./helpers"
+import { SessionTasks } from "./session-tasks"
+import { MonthHeatmap, YearMonthsGrid } from "./month-heatmap"
 import { exportToCSV, exportToExcel, exportToJSON } from "./export"
 import { MobileEntryCard } from "./entry-card"
 import type { SelectedBreak } from "./dialogs"
@@ -274,7 +276,8 @@ export function HistoryCard({
                               const isCurrentEntry = currentEntry?.id === entry.id && !entry.clockOut
 
                               return (
-                                <TableRow key={entry.id} className={isCurrentEntry ? "bg-primary/5" : ""}>
+                                <React.Fragment key={entry.id}>
+                                <TableRow className={cn(isCurrentEntry ? "bg-primary/5" : "", entry.subtasks && entry.subtasks.length > 0 && "border-b-0")}>
                                   <TableCell className="font-semibold text-xs max-w-sm">
                                     <div className="flex items-start gap-2">
                                       <div className="mt-0.5">
@@ -284,7 +287,7 @@ export function HistoryCard({
                                       </div>
                                       <div className="flex items-center gap-2 truncate">
                                         <span className="truncate">
-                                          {entry.title || (
+                                          {getSessionHeadline(entry) || (
                                             <span className="text-foreground/70 italic">No task specified</span>
                                           )}
                                         </span>
@@ -306,38 +309,6 @@ export function HistoryCard({
                                         })()}
                                       </div>
                                     </div>
-                                    {entry.subtasks && entry.subtasks.length > 0 && (
-                                      <div className="mt-2 pt-2 border-t border-muted text-xs text-foreground/70 space-y-1.5">
-                                        <p className="font-medium text-foreground mb-1">Previous tasks in this session:</p>
-                                        {entry.subtasks.map((subtask) => {
-                                          const subtaskDuration = calculateDuration(
-                                            subtask.clockIn,
-                                            subtask.clockOut,
-                                            0,
-                                          )
-                                          return (
-                                            <div
-                                              key={subtask.id}
-                                              className="flex items-start gap-2 pl-2 border-l-2 border-muted/50"
-                                            >
-                                              <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-1.5">
-                                                  <span className="text-foreground/90 font-medium truncate">
-                                                    {subtask.title}
-                                                  </span>
-                                                </div>
-                                                <div className="text-foreground/60 text-[10px] mt-0.5">
-                                                  {formatTime(subtask.clockIn)} → {subtask.clockOut ? formatTime(subtask.clockOut) : "..."}
-                                                </div>
-                                              </div>
-                                              <span className="text-foreground/70 font-mono text-[10px] whitespace-nowrap">
-                                                {subtaskDuration.hours}h {subtaskDuration.minutes}m
-                                              </span>
-                                            </div>
-                                          )
-                                        })}
-                                      </div>
-                                    )}
                                   </TableCell>
                                   <TableCell className="font-mono text-xs">{formatTime(entry.clockIn)}</TableCell>
                                   <TableCell className="font-mono text-xs">
@@ -380,8 +351,7 @@ export function HistoryCard({
                                                 {getBreakTypeLabel(breakPeriod.type, breakPeriod.title)}
                                               </Badge>
                                               <span className="text-foreground/70">
-                                                {formatTime(breakPeriod.startTime)} -{" "}
-                                                {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                {formatTimeRange(breakPeriod.startTime, breakPeriod.endTime)}
                                                 {breakDuration && (
                                                   <span className="ml-1 text-foreground/60">
                                                     ({breakDuration.hours}h {breakDuration.minutes}m)
@@ -423,6 +393,14 @@ export function HistoryCard({
                                     </DropdownMenu>
                                   </TableCell>
                                 </TableRow>
+                                {entry.subtasks && entry.subtasks.length > 0 && (
+                                  <TableRow className={cn(isCurrentEntry ? "bg-primary/5" : "", "hover:bg-transparent")}>
+                                    <TableCell colSpan={6} className="pt-0 pb-4">
+                                      <SessionTasks entry={entry} layout="wide" />
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                                </React.Fragment>
                               )
                             })}
                           </TableBody>
@@ -503,11 +481,15 @@ export function HistoryCard({
                                 .map(([date, dateEntries]) => {
                                   const dayTotal = calculateTotalHours(dateEntries)
                                   const dayBreaks = calculateTotalBreakMinutes(dateEntries)
+                                  // Each entry with task switches adds a full-width detail row below it.
+                                  const detailRowCount = dateEntries.filter(
+                                    (e) => e.subtasks && e.subtasks.length > 0,
+                                  ).length
                                   return (
                                     <React.Fragment key={date}>
                                       <TableRow className="bg-card/10">
                                         <TableCell
-                                          rowSpan={dateEntries.length + 1}
+                                          rowSpan={dateEntries.length + detailRowCount}
                                           className="font-medium text-xs align-top"
                                         >
                                           {formatDate(date)}
@@ -537,7 +519,7 @@ export function HistoryCard({
                                                       </div>
                                                       <div className="flex items-center gap-2 truncate">
                                                         <span className="truncate">
-                                                          {entry.title || (
+                                                          {getSessionHeadline(entry) || (
                                                             <span className="text-foreground/70 italic">
                                                               No task specified
                                                             </span>
@@ -561,33 +543,6 @@ export function HistoryCard({
                                                         })()}
                                                       </div>
                                                     </div>
-                                                    {entry.subtasks && entry.subtasks.length > 0 && (
-                                                      <div className="mt-2 pt-2 border-t border-muted text-xs text-foreground/70 space-y-1">
-                                                        <p className="font-medium text-foreground">
-                                                          Tasks completed:
-                                                        </p>
-                                                        {entry.subtasks.map((subtask) => {
-                                                          const subtaskDuration = calculateDuration(
-                                                            subtask.clockIn,
-                                                            subtask.clockOut,
-                                                            0,
-                                                          )
-                                                          return (
-                                                            <div
-                                                              key={subtask.id}
-                                                              className="flex items-center justify-between text-xs"
-                                                            >
-                                                              <span className="truncate flex-1">
-                                                                • {subtask.title}
-                                                              </span>
-                                                              <span className="text-foreground/70 ml-2">
-                                                                {subtaskDuration.hours}h {subtaskDuration.minutes}m
-                                                              </span>
-                                                            </div>
-                                                          )
-                                                        })}
-                                                      </div>
-                                                    )}
                                                   </TableCell>
                                                   <TableCell className="font-mono text-xs">
                                                     {formatTime(entry.clockIn)}
@@ -636,15 +591,15 @@ export function HistoryCard({
                                                                   <>
                                                                     <span className="font-medium">{breakPeriod.title}</span>
                                                                     <span className="ml-2 text-foreground/60 text-[10px]">
-                                                                      {formatTime(breakPeriod.startTime)} -{" "}
-                                                                      {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                                      {formatTimeRange(breakPeriod.startTime, breakPeriod.endTime)}
+                                                                      {null}
                                                                       {breakDuration && ` (${breakDuration.hours}h ${breakDuration.minutes}m)`}
                                                                     </span>
                                                                   </>
                                                                 ) : (
                                                                   <>
-                                                                    {formatTime(breakPeriod.startTime)} -{" "}
-                                                                    {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                                    {formatTimeRange(breakPeriod.startTime, breakPeriod.endTime)}
+                                                                    {null}
                                                                     {breakDuration && (
                                                                       <span className="ml-1 text-foreground/60">
                                                                         ({breakDuration.hours}h {breakDuration.minutes}m)
@@ -696,6 +651,14 @@ export function HistoryCard({
                                           )
                                         })}
                                       </TableRow>
+                                      {/* Full-width task breakdown for the day's first entry */}
+                                      {dateEntries[0]?.subtasks && dateEntries[0].subtasks.length > 0 && (
+                                        <TableRow className="hover:bg-transparent">
+                                          <TableCell colSpan={6} className="pt-0 pb-4">
+                                            <SessionTasks entry={dateEntries[0]} layout="wide" />
+                                          </TableCell>
+                                        </TableRow>
+                                      )}
                                       {/* Subsequent entries for the same day */}
                                       {dateEntries.slice(1).map((entry) => {
                                         const duration = calculateDuration(
@@ -706,7 +669,8 @@ export function HistoryCard({
                                         const isCurrentEntry = currentEntry?.id === entry.id && !entry.clockOut
 
                                         return (
-                                          <TableRow key={entry.id} className={isCurrentEntry ? "bg-primary/5" : ""}>
+                                          <React.Fragment key={entry.id}>
+                                          <TableRow className={cn(isCurrentEntry ? "bg-primary/5" : "", entry.subtasks && entry.subtasks.length > 0 && "border-b-0")}>
                                             <TableCell className="font-semibold text-xs max-w-sm">
                                               <div className="flex items-start gap-2">
                                                 <div className="mt-0.5">
@@ -716,7 +680,7 @@ export function HistoryCard({
                                                 </div>
                                                 <div className="flex items-center gap-2 truncate">
                                                   <span className="truncate">
-                                                    {entry.title || (
+                                                    {getSessionHeadline(entry) || (
                                                       <span className="text-foreground/70 italic">
                                                         No task specified
                                                       </span>
@@ -740,29 +704,6 @@ export function HistoryCard({
                                                   })()}
                                                 </div>
                                               </div>
-                                              {entry.subtasks && entry.subtasks.length > 0 && (
-                                                <div className="mt-2 pt-2 border-t border-muted text-xs text-foreground/70 space-y-1">
-                                                  <p className="font-medium text-foreground">Tasks completed:</p>
-                                                  {entry.subtasks.map((subtask) => {
-                                                    const subtaskDuration = calculateDuration(
-                                                      subtask.clockIn,
-                                                      subtask.clockOut,
-                                                      0,
-                                                    )
-                                                    return (
-                                                      <div
-                                                        key={subtask.id}
-                                                        className="flex items-center justify-between text-xs"
-                                                      >
-                                                        <span className="truncate flex-1">• {subtask.title}</span>
-                                                        <span className="text-foreground/70 ml-2">
-                                                          {subtaskDuration.hours}h {subtaskDuration.minutes}m
-                                                        </span>
-                                                      </div>
-                                                    )
-                                                  })}
-                                                </div>
-                                              )}
                                             </TableCell>
                                             <TableCell className="font-mono text-xs">
                                               {formatTime(entry.clockIn)}
@@ -811,15 +752,15 @@ export function HistoryCard({
                                                             <>
                                                               <span className="font-medium">{breakPeriod.title}</span>
                                                               <span className="ml-2 text-foreground/60 text-[10px]">
-                                                                {formatTime(breakPeriod.startTime)} -{" "}
-                                                                {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                                {formatTimeRange(breakPeriod.startTime, breakPeriod.endTime)}
+                                                                {null}
                                                                 {breakDuration && ` (${breakDuration.hours}h ${breakDuration.minutes}m)`}
                                                               </span>
                                                             </>
                                                           ) : (
                                                             <>
-                                                              {formatTime(breakPeriod.startTime)} -{" "}
-                                                              {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                                                              {formatTimeRange(breakPeriod.startTime, breakPeriod.endTime)}
+                                                              {null}
                                                               {breakDuration && (
                                                                 <span className="ml-1 text-foreground/60">
                                                                   ({breakDuration.hours}h {breakDuration.minutes}m)
@@ -866,6 +807,14 @@ export function HistoryCard({
                                               </DropdownMenu>
                                             </TableCell>
                                           </TableRow>
+                                          {entry.subtasks && entry.subtasks.length > 0 && (
+                                            <TableRow className={cn(isCurrentEntry ? "bg-primary/5" : "", "hover:bg-transparent")}>
+                                              <TableCell colSpan={6} className="pt-0 pb-4">
+                                                <SessionTasks entry={entry} layout="wide" />
+                                              </TableCell>
+                                            </TableRow>
+                                          )}
+                                          </React.Fragment>
                                         )
                                       })}
                                     </React.Fragment>
@@ -879,83 +828,25 @@ export function HistoryCard({
                   )
                 })}
 
-            {(viewPeriod === "monthly" || viewPeriod === "yearly") && (
-              <div className="space-y-4">
-                <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                  {/* For monthly and yearly views, we need to group by month/year first */}
-                  {viewPeriod === "monthly" &&
-                    Object.entries(groupEntriesByMonth(filteredEntries))
-                      .sort(([a], [b]) => a.localeCompare(b)) // Sort by year-month
-                      .map(([monthKey, monthEntriesGroup]) => (
-                        <Card key={monthKey} className="bg-card/50 border-border">
-                          <CardHeader className="pb-2">
-                            <CardTitle className="text-sm">
-                              {parseLocalDateKey(`${monthKey}-01`).toLocaleDateString("en-US", {
-                                month: "long",
-                                year: "numeric",
-                              })}
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="space-y-2">
-                            {/* Sum up hours and breaks for the entire month */}
-                            {(() => {
-                              let totalMonthHours = 0
-                              let totalMonthBreaks = 0
-                              let sessionCount = 0
-                              Object.values(monthEntriesGroup).forEach((dayEntries) => {
-                                totalMonthHours += calculateTotalHours(dayEntries)
-                                totalMonthBreaks += calculateTotalBreakMinutes(dayEntries)
-                                sessionCount += dayEntries.length
-                              })
-                              return (
-                                <>
-                                  <div className="text-2xl font-bold">{totalMonthHours.toFixed(1)}h</div>
-                                  <div className="text-xs text-foreground/70 space-y-1">
-                                    <p>{sessionCount} session(s)</p>
-                                    <p>{totalMonthBreaks}m breaks</p>
-                                  </div>
-                                </>
-                              )
-                            })()}
-                          </CardContent>
-                        </Card>
-                      ))}
-                  {viewPeriod === "yearly" &&
-                    Object.entries(groupEntriesByYear(filteredEntries))
-                      .sort(([a], [b]) => Number.parseInt(a) - Number.parseInt(b)) // Sort by year
-                      .map(([year, yearEntriesGroup]) => (
-                        <Card key={year} className="bg-card/50 border-border">
-                          <CardHeader className="pb-2">
-                            <CardTitle className="text-sm">{year}</CardTitle>
-                          </CardHeader>
-                          <CardContent className="space-y-2">
-                            {/* Sum up hours and breaks for the entire year */}
-                            {(() => {
-                              let totalYearHours = 0
-                              let totalYearBreaks = 0
-                              let sessionCount = 0
-                              Object.values(yearEntriesGroup).forEach((monthEntriesGroup) => {
-                                Object.values(monthEntriesGroup).forEach((dayEntries) => {
-                                  totalYearHours += calculateTotalHours(dayEntries)
-                                  totalYearBreaks += calculateTotalBreakMinutes(dayEntries)
-                                  sessionCount += dayEntries.length
-                                })
-                              })
-                              return (
-                                <>
-                                  <div className="text-2xl font-bold">{totalYearHours.toFixed(1)}h</div>
-                                  <div className="text-xs text-foreground/70 space-y-1">
-                                    <p>{sessionCount} session(s)</p>
-                                    <p>{totalYearBreaks}m breaks</p>
-                                  </div>
-                                </>
-                              )
-                            })()}
-                          </CardContent>
-                        </Card>
-                      ))}
-                </div>
-              </div>
+            {viewPeriod === "monthly" && (
+              <MonthHeatmap
+                selectedDate={selectedDate}
+                entries={filteredEntries}
+                onDayClick={(date) => {
+                  onSelectedDateChange(date)
+                  onViewPeriodChange("daily")
+                }}
+              />
+            )}
+            {viewPeriod === "yearly" && (
+              <YearMonthsGrid
+                selectedDate={selectedDate}
+                entries={filteredEntries}
+                onMonthClick={(date) => {
+                  onSelectedDateChange(date)
+                  onViewPeriodChange("monthly")
+                }}
+              />
             )}
           </div>
         )}
