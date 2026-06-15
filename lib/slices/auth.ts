@@ -28,7 +28,6 @@ import type { AppState } from "./index"
 export interface AuthSlice {
   user: User | null
   isLoggedIn: boolean
-  isAdmin: boolean
   authInitialized: boolean
   authError: string
 
@@ -38,7 +37,6 @@ export interface AuthSlice {
   loginWithGoogle: () => Promise<void>
   logout: () => Promise<void>
   setUser: (user: User | null) => void
-  checkAdminStatus: () => Promise<void>
   setAuthInitialized: (ready: boolean) => void
   setAuthError: (error: string) => void
   updateUserProfile: (updates: Partial<User>) => Promise<void>
@@ -52,18 +50,8 @@ export const createAuthSlice: StateCreator<
 > = (set, get) => ({
   user: null,
   isLoggedIn: false,
-  isAdmin: false,
   authInitialized: false,
   authError: "",
-
-  checkAdminStatus: async () => {
-    try {
-      const { data, error } = await supabase.rpc("is_admin")
-      set({ isAdmin: !error && data === true })
-    } catch {
-      set({ isAdmin: false })
-    }
-  },
 
   fetchInitialData: async () => {
     const { user } = get()

@@ -1,9 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, Users, ScrollText, ArrowLeft, Shield } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { LayoutDashboard, Users, ScrollText, Shield, LogOut } from "lucide-react"
+import { AdminSessionGuard, ADMIN_REMEMBER, clearAdminSession } from "./admin-session-guard"
 
 const SECTIONS = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
@@ -13,7 +15,15 @@ const SECTIONS = [
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
   const isActive = (href: string, exact: boolean) => (exact ? pathname === href : pathname.startsWith(href))
+
+  const handleLogout = async () => {
+    clearAdminSession()
+    localStorage.removeItem(ADMIN_REMEMBER)
+    await supabase.auth.signOut()
+    router.replace("/admin/login")
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground flex">
@@ -53,16 +63,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="p-3 border-t border-border">
-          <Link
-            href="/"
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
           >
-            <ArrowLeft className="size-4" />
-            Back to app
-          </Link>
+            <LogOut className="size-4" />
+            Log out
+          </button>
         </div>
       </aside>
 
+      <AdminSessionGuard />
       <main className="flex-1 ml-60 p-4 sm:p-6 lg:p-8 overflow-x-hidden">{children}</main>
     </div>
   )
