@@ -4,7 +4,7 @@ import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
-import { NAV_VIEW_IDS } from "@/lib/feature-flags"
+import { navViewIdsFrom } from "@/lib/feature-flags"
 import type { ViewId } from "@/lib/feature-flags"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import {
@@ -47,13 +47,14 @@ const PRIORITY: ViewId[] = [
 const MAX_INLINE = 5
 
 export function MobileBottomNav() {
-  const { activeView, setActiveView, tasks, notes, currentEntry } = useAppStore(
+  const { activeView, setActiveView, tasks, notes, currentEntry, featureOverrides } = useAppStore(
     useShallow((state) => ({
       activeView: state.activeView,
       setActiveView: state.setActiveView,
       tasks: state.tasks,
       notes: state.notes,
       currentEntry: state.currentEntry,
+      featureOverrides: state.featureOverrides,
     })),
   )
 
@@ -72,8 +73,9 @@ export function MobileBottomNav() {
     profile: { label: "Profile", icon: User },
   }
 
-  // Enabled views in priority order.
-  const enabled: NavItem[] = PRIORITY.filter((id) => NAV_VIEW_IDS.includes(id)).map((id) => ({
+  // Enabled views in priority order (respecting live feature-flag overrides).
+  const navViewIds = navViewIdsFrom(featureOverrides)
+  const enabled: NavItem[] = PRIORITY.filter((id) => navViewIds.includes(id)).map((id) => ({
     id,
     ...meta[id],
   }))

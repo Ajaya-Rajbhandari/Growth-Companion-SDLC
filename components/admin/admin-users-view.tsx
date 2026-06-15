@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -78,7 +79,9 @@ export function AdminUsersView() {
                 {users.map((u) => (
                   <tr key={u.id} className="border-b border-border/40 last:border-0 hover:bg-muted/30">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-foreground truncate max-w-[260px]">{u.email || u.id.slice(0, 8)}</div>
+                      <Link href={`/admin/users/${u.id}`} className="font-medium text-foreground hover:text-primary hover:underline truncate max-w-[260px] block">
+                        {u.email || u.id.slice(0, 8)}
+                      </Link>
                       {!u.email_confirmed && <span className="text-[10px] text-amber-600 dark:text-amber-400">unconfirmed</span>}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{fmtDate(u.created_at)}</td>

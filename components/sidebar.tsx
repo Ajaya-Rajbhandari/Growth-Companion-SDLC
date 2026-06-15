@@ -3,12 +3,12 @@
 import { cn } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
-import { NAV_VIEW_IDS } from "@/lib/feature-flags"
+import { navViewIdsFrom } from "@/lib/feature-flags"
 import { LayoutDashboard, CheckSquare, FileText, Sparkles, Clock, User, LogOut, Sun, Moon, Calendar as CalendarIcon, Target, Flame, BarChart3 } from "lucide-react"
 import { useTheme } from "next-themes"
 
 export function Sidebar() {
-  const { activeView, setActiveView, tasks, notes, currentEntry, user, logout } = useAppStore(
+  const { activeView, setActiveView, tasks, notes, currentEntry, user, logout, featureOverrides } = useAppStore(
     useShallow((state) => ({
       activeView: state.activeView,
       setActiveView: state.setActiveView,
@@ -17,8 +17,10 @@ export function Sidebar() {
       currentEntry: state.currentEntry,
       user: state.user,
       logout: state.logout,
+      featureOverrides: state.featureOverrides,
     })),
   )
+  const navViewIds = navViewIdsFrom(featureOverrides)
   const { theme, resolvedTheme, setTheme } = useTheme()
   const isDark = (theme === "dark" || (theme === "system" && resolvedTheme === "dark"))
   const toggleTheme = () => setTheme(isDark ? "light" : "dark")
@@ -92,7 +94,7 @@ export function Sidebar() {
 
       <nav className="flex-1 px-3 overflow-y-auto scrollbar-hide">
         <ul className="space-y-1">
-          {navItems.filter((item) => NAV_VIEW_IDS.includes(item.id)).map((item) => (
+          {navItems.filter((item) => navViewIds.includes(item.id)).map((item) => (
             <li key={item.id}>
               <button
                 onClick={() => setActiveView(item.id)}

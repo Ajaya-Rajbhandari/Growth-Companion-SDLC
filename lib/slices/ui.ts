@@ -1,15 +1,17 @@
 import type { StateCreator } from "zustand"
 import { supabase } from "../supabase"
 import { trackEvent } from "../analytics"
-import type { ViewId } from "../feature-flags"
+import type { FeatureName, FlagOverrides, ViewId } from "../feature-flags"
 import type { AppState } from "./index"
 
 export interface UiSlice {
   activeView: ViewId
   hasCompletedOnboarding: boolean
   currentOnboardingStep: number
+  featureOverrides: FlagOverrides
 
   setActiveView: (view: ViewId) => void
+  loadFeatureFlags: () => Promise<void>
   setOnboardingStatus: (completed: boolean) => void
   setOnboardingStep: (step: number) => void
   completeOnboarding: () => Promise<void>
@@ -25,8 +27,19 @@ export const createUiSlice: StateCreator<
   activeView: "dashboard",
   hasCompletedOnboarding: false,
   currentOnboardingStep: 0,
+  featureOverrides: {},
 
   setActiveView: (view) => set({ activeView: view }),
+
+  loadFeatureFlags: async () => {
+    const { data, error } = await supabase.from("feature_flags").select("name, enabled")
+    if (error || !data) return
+    const overrides: FlagOverrides = {}
+    for (const row of data as { name: string; enabled: boolean }[]) {
+      overrides[row.name as FeatureName] = row.enabled
+    }
+    set({ featureOverrides: overrides })
+  },
 
   setOnboardingStatus: (completed: boolean) => {
     set({

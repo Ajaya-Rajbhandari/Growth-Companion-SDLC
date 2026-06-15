@@ -4,13 +4,15 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
-import { LayoutDashboard, Users, ScrollText, Shield, LogOut } from "lucide-react"
+import { LayoutDashboard, Users, ScrollText, MessageSquare, Flag, Shield, LogOut } from "lucide-react"
 import { AdminSessionGuard, ADMIN_REMEMBER, clearAdminSession } from "./admin-session-guard"
 
 const SECTIONS = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/admin/users", label: "Users", icon: Users, exact: false },
   { href: "/admin/events", label: "Events", icon: ScrollText, exact: false },
+  { href: "/admin/feedback", label: "Feedback", icon: MessageSquare, exact: false },
+  { href: "/admin/flags", label: "Feature Flags", icon: Flag, exact: false },
 ]
 
 export function AdminShell({ children }: { children: React.ReactNode }) {

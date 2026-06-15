@@ -23,6 +23,8 @@ The following migration files need to be run in order:
 9. `migrations/009_add_analytics_events.sql` - Creates the `analytics_events` table for global product analytics (see scripts/analytics-queries.sql).
 10. `migrations/010_add_admin_analytics.sql` - Adds the `admins` allowlist + SECURITY DEFINER functions powering the in-app Admin dashboard. **After running, add yourself as an admin** (see file header).
 11. `migrations/011_admin_cms.sql` - Adds admin CMS data functions (list users, recent events, grant/revoke admin).
+12. `migrations/012_admin_powerups.sql` - Adds admin user drill-down + AI feedback inbox functions.
+13. `migrations/013_feature_flags.sql` - Adds the `feature_flags` table + admin toggle RPC for live feature flags.
 
 ## Steps to Run Migrations
 
