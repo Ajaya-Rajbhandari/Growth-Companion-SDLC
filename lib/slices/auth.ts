@@ -22,11 +22,13 @@ import {
 } from "../mappers"
 import type { User } from "../types"
 import { deriveDisplayName } from "../utils"
+import { trackEvent } from "../analytics"
 import type { AppState } from "./index"
 
 export interface AuthSlice {
   user: User | null
   isLoggedIn: boolean
+  isAdmin: boolean
   authInitialized: boolean
   authError: string
 
@@ -36,6 +38,7 @@ export interface AuthSlice {
   loginWithGoogle: () => Promise<void>
   logout: () => Promise<void>
   setUser: (user: User | null) => void
+  checkAdminStatus: () => Promise<void>
   setAuthInitialized: (ready: boolean) => void
   setAuthError: (error: string) => void
   updateUserProfile: (updates: Partial<User>) => Promise<void>
@@ -49,8 +52,18 @@ export const createAuthSlice: StateCreator<
 > = (set, get) => ({
   user: null,
   isLoggedIn: false,
+  isAdmin: false,
   authInitialized: false,
   authError: "",
+
+  checkAdminStatus: async () => {
+    try {
+      const { data, error } = await supabase.rpc("is_admin")
+      set({ isAdmin: !error && data === true })
+    } catch {
+      set({ isAdmin: false })
+    }
+  },
 
   fetchInitialData: async () => {
     const { user } = get()
@@ -144,6 +157,8 @@ export const createAuthSlice: StateCreator<
       set({ authError: error.message })
       throw error
     }
+
+    trackEvent("user_signed_up", data.user?.id ?? null, { needsConfirmation: !data.session })
 
     // When email confirmation is enabled, signUp returns a user but no session.
     // Without a session, every authenticated call (updateUser, fetchInitialData,

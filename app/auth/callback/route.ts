@@ -45,6 +45,10 @@ export async function GET(request: Request) {
         }
     }
 
-    // URL to redirect to after sign in process completes
-    return NextResponse.redirect(requestUrl.origin)
+    // URL to redirect to after sign in completes. Honor a `next` param (used by
+    // the admin login's Google sign-in to return to /admin/login), restricted to
+    // same-origin relative paths to avoid open redirects.
+    const next = requestUrl.searchParams.get("next")
+    const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/"
+    return NextResponse.redirect(`${requestUrl.origin}${safeNext}`)
 }

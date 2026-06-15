@@ -4,11 +4,12 @@ import { cn } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { NAV_VIEW_IDS } from "@/lib/feature-flags"
-import { LayoutDashboard, CheckSquare, FileText, Sparkles, Clock, User, LogOut, Sun, Moon, Calendar as CalendarIcon, Target, Flame, BarChart3 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { LayoutDashboard, CheckSquare, FileText, Sparkles, Clock, User, LogOut, Sun, Moon, Calendar as CalendarIcon, Target, Flame, BarChart3, Shield } from "lucide-react"
 import { useTheme } from "next-themes"
 
 export function Sidebar() {
-  const { activeView, setActiveView, tasks, notes, currentEntry, user, logout } = useAppStore(
+  const { activeView, setActiveView, tasks, notes, currentEntry, user, isAdmin, logout } = useAppStore(
     useShallow((state) => ({
       activeView: state.activeView,
       setActiveView: state.setActiveView,
@@ -16,9 +17,11 @@ export function Sidebar() {
       notes: state.notes,
       currentEntry: state.currentEntry,
       user: state.user,
+      isAdmin: state.isAdmin,
       logout: state.logout,
     })),
   )
+  const router = useRouter()
   const { theme, resolvedTheme, setTheme } = useTheme()
   const isDark = (theme === "dark" || (theme === "system" && resolvedTheme === "dark"))
   const toggleTheme = () => setTheme(isDark ? "light" : "dark")
@@ -74,6 +77,15 @@ export function Sidebar() {
       label: "Profile",
       icon: User,
     },
+    ...(isAdmin
+      ? [
+          {
+            id: "admin" as const,
+            label: "Admin",
+            icon: Shield,
+          },
+        ]
+      : []),
   ]
 
   return (
@@ -92,10 +104,10 @@ export function Sidebar() {
 
       <nav className="flex-1 px-3 overflow-y-auto scrollbar-hide">
         <ul className="space-y-1">
-          {navItems.filter((item) => NAV_VIEW_IDS.includes(item.id)).map((item) => (
+          {navItems.filter((item) => item.id === "admin" || NAV_VIEW_IDS.includes(item.id)).map((item) => (
             <li key={item.id}>
               <button
-                onClick={() => setActiveView(item.id)}
+                onClick={() => (item.id === "admin" ? router.push("/admin") : setActiveView(item.id))}
                 className={cn(
                   "group relative w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all",
                   activeView === item.id

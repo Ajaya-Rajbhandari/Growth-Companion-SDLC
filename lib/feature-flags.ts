@@ -18,6 +18,7 @@ export type ViewId =
   | "goals"
   | "habits"
   | "profile"
+  | "admin"
 
 export type FeatureName =
   | "TIMESHEET"

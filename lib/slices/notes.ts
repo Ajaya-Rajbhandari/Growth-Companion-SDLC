@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand"
 import { supabase } from "../supabase"
 import { mapNoteFromDb, throwSupabaseError, type DbNote } from "../mappers"
+import { trackEvent } from "../analytics"
 import type { Note } from "../types"
 import type { AppState } from "./index"
 
@@ -60,6 +61,7 @@ export const createNotesSlice: StateCreator<
       set((state) => ({
         notes: [mapNoteFromDb(data as DbNote), ...state.notes],
       }))
+      trackEvent("note_created", user.id, { category: note.category || "other" })
     }
   },
   updateNote: async (id, updates) => {

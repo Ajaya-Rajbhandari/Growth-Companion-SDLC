@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
@@ -17,6 +18,7 @@ import {
   Flame,
   User,
   BarChart3,
+  Shield,
   MoreHorizontal,
   type LucideIcon,
 } from "lucide-react"
@@ -47,16 +49,18 @@ const PRIORITY: ViewId[] = [
 const MAX_INLINE = 5
 
 export function MobileBottomNav() {
-  const { activeView, setActiveView, tasks, notes, currentEntry } = useAppStore(
+  const { activeView, setActiveView, tasks, notes, currentEntry, isAdmin } = useAppStore(
     useShallow((state) => ({
       activeView: state.activeView,
       setActiveView: state.setActiveView,
       tasks: state.tasks,
       notes: state.notes,
       currentEntry: state.currentEntry,
+      isAdmin: state.isAdmin,
     })),
   )
 
+  const router = useRouter()
   const [moreOpen, setMoreOpen] = useState(false)
   const pendingTasks = tasks.filter((t) => !t.completed).length
 
@@ -70,13 +74,16 @@ export function MobileBottomNav() {
     goals: { label: "Goals", icon: Target },
     habits: { label: "Habits", icon: Flame },
     profile: { label: "Profile", icon: User },
+    admin: { label: "Admin", icon: Shield },
   }
 
-  // Enabled views in priority order.
+  // Enabled views in priority order; admins get the Admin view appended (it lands
+  // in the "More" sheet so it never displaces a primary tab).
   const enabled: NavItem[] = PRIORITY.filter((id) => NAV_VIEW_IDS.includes(id)).map((id) => ({
     id,
     ...meta[id],
   }))
+  if (isAdmin) enabled.push({ id: "admin", ...meta.admin })
 
   const needsMore = enabled.length > MAX_INLINE
   const primary = needsMore ? enabled.slice(0, MAX_INLINE - 1) : enabled
@@ -84,8 +91,12 @@ export function MobileBottomNav() {
   const overflowActive = overflow.some((item) => item.id === activeView)
 
   const handleSelect = (id: ViewId) => {
-    setActiveView(id)
     setMoreOpen(false)
+    if (id === "admin") {
+      router.push("/admin")
+      return
+    }
+    setActiveView(id)
   }
 
   return (
