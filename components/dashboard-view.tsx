@@ -18,6 +18,7 @@ import {
   Plus,
   Play,
   Square,
+  Coffee,
   Target,
   Flame,
   ArrowRight,
@@ -29,6 +30,7 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis, ReferenceLine } from "rec
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { cn, getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
 import { format, isToday, isTomorrow, parseISO, differenceInDays } from "date-fns"
+import { BreakDialog, type BreakType } from "@/components/timesheet/dialogs"
 
 function formatMinutes(totalMinutes: number): string {
   const hours = Math.floor(totalMinutes / 60)
@@ -53,16 +55,18 @@ export function DashboardView() {
   const { 
     tasks, 
     notes, 
-    currentEntry, 
-    timeEntries, 
-    user, 
-    fetchInitialData, 
+    currentEntry,
+    activeBreak,
+    timeEntries,
+    user,
+    fetchInitialData,
     activeView,
     goals,
     habits,
     habitLogs,
     clockIn,
     clockOut,
+    endBreak,
     setActiveView,
     officeHours,
     graceMinutes,
@@ -74,6 +78,7 @@ export function DashboardView() {
       tasks: state.tasks,
       notes: state.notes,
       currentEntry: state.currentEntry,
+      activeBreak: state.activeBreak,
       timeEntries: state.timeEntries,
       user: state.user,
       fetchInitialData: state.fetchInitialData,
@@ -83,6 +88,7 @@ export function DashboardView() {
       habitLogs: state.habitLogs,
       clockIn: state.clockIn,
       clockOut: state.clockOut,
+      endBreak: state.endBreak,
       setActiveView: state.setActiveView,
       officeHours: state.officeHours,
       graceMinutes: state.graceMinutes,
@@ -104,6 +110,8 @@ export function DashboardView() {
   // Keep live Today/status cards fresh while a session is open.
   // Without this ticking value, Date.now() inside memoized calculations only updates
   // when another state change happens, so the dashboard can look stale after clock-in.
+  const [breakDialogOpen, setBreakDialogOpen] = useState(false)
+  const [breakType, setBreakType] = useState<BreakType>("custom")
   const [nowMs, setNowMs] = useState(() => Date.now())
   useEffect(() => {
     if (!currentEntry) return
@@ -157,6 +165,52 @@ export function DashboardView() {
     }
     return hours
   }, [todayHours, currentEntry, todayStr, nowMs])
+
+  // Live elapsed time for the open session (excludes break minutes), ticking via nowMs.
+  const currentSessionElapsed = useMemo(() => {
+    if (!currentEntry || currentEntry.clockOut) return ""
+    const start = new Date(currentEntry.clockIn).getTime()
+    const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
+    const totalSeconds = Math.floor(Math.max(0, nowMs - start - breakMs) / 1000)
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const h = Math.floor(totalSeconds / 3600)
+    const m = Math.floor((totalSeconds % 3600) / 60)
+    const s = totalSeconds % 60
+    return `${pad(h)}:${pad(m)}:${pad(s)}`
+  }, [currentEntry, nowMs])
+
+  // Live elapsed time for the CURRENT task only (since the last task switch), ticking via nowMs.
+  // Null until you've switched at least once — before that, the session timer already covers it.
+  const currentTaskElapsed = useMemo(() => {
+    if (!currentEntry || currentEntry.clockOut || activeBreak) return null
+    const subs = currentEntry.subtasks || []
+    if (subs.length === 0) return null
+    const startMs = new Date(subs[subs.length - 1].clockOut || currentEntry.clockIn).getTime()
+    const taskBreakMs = (currentEntry.breaks || []).reduce((sum, b) => {
+      if (b.endTime && new Date(b.startTime).getTime() >= startMs) {
+        return sum + (new Date(b.endTime).getTime() - new Date(b.startTime).getTime())
+      }
+      return sum
+    }, 0)
+    const diffMs = Math.max(0, nowMs - startMs - taskBreakMs)
+    return `${Math.floor(diffMs / 3600000)}h ${Math.floor((diffMs % 3600000) / 60000)}m`
+  }, [currentEntry, activeBreak, nowMs])
+
+  // Live break status (countdown for timed breaks, elapsed for open-ended), ticking via nowMs.
+  const breakStatus = useMemo(() => {
+    if (!activeBreak) return null
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const fmt = (totalSec: number) => `${pad(Math.floor(totalSec / 60))}:${pad(totalSec % 60)}`
+    const startedAt = new Date(activeBreak.startTime).getTime()
+    const elapsedSec = Math.max(0, Math.floor((nowMs - startedAt) / 1000))
+    const duration = activeBreak.durationMinutes
+    if (duration && duration > 0) {
+      const remainingSec = duration * 60 - elapsedSec
+      if (remainingSec > 0) return { ended: false, timer: fmt(remainingSec), suffix: "left" }
+      return { ended: true, timer: "", suffix: "" }
+    }
+    return { ended: false, timer: fmt(elapsedSec), suffix: "elapsed" }
+  }, [activeBreak, nowMs])
 
   const completionRate = useMemo(() => {
     return tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0
@@ -272,6 +326,10 @@ export function DashboardView() {
       clockIn()
     } else if (action === "clock-out") {
       clockOut()
+    } else if (action === "take-break") {
+      setBreakDialogOpen(true)
+    } else if (action === "resume") {
+      void endBreak()
     } else if (isViewEnabled(action as ViewId)) {
       setActiveView(action as any)
     }
@@ -281,15 +339,52 @@ export function DashboardView() {
 
   return (
     <div className="space-y-5 sm:space-y-7">
+      <BreakDialog
+        open={breakDialogOpen}
+        onOpenChange={setBreakDialogOpen}
+        breakType={breakType}
+        onBreakTypeChange={setBreakType}
+        onBeforeStart={() => {}}
+      />
       {/* Header Section */}
       <div className="relative overflow-hidden rounded-3xl border border-border/70 bg-card/80 p-5 sm:p-7 shadow-xl shadow-black/5 backdrop-blur dark:shadow-black/25">
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_right,var(--primary),transparent_26rem)] opacity-20" />
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
           <div className="min-w-0">
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/50 px-3 py-1 text-xs font-medium text-muted-foreground">
-              <Activity className="size-3.5 text-accent" />
-              {currentEntry ? "Active focus session" : "Ready for today's plan"}
-            </div>
+            {activeBreak ? (
+              <div className={cn(
+                "mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium",
+                breakStatus?.ended
+                  ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-300"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+              )}>
+                <Coffee className="size-3.5" />
+                {breakStatus?.ended ? (
+                  "Break ended — tap Resume Work"
+                ) : (
+                  <span>
+                    On break
+                    {breakStatus?.timer && (
+                      <span className="ml-1.5 tabular-nums font-semibold">{breakStatus.timer} {breakStatus.suffix}</span>
+                    )}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/50 px-3 py-1 text-xs font-medium text-muted-foreground">
+                <Activity className="size-3.5 text-accent" />
+                {currentEntry ? (
+                  <span>
+                    Active focus session
+                    {currentSessionElapsed && (
+                      <span className="ml-1.5 tabular-nums font-semibold text-foreground">{currentSessionElapsed}</span>
+                    )}
+                  </span>
+                ) : (
+                  "Ready for today's plan"
+                )}
+              </div>
+            )}
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
               {greeting}{user ? `, ${user.name.split(" ")[0]}` : ""}!
             </h2>
@@ -320,6 +415,28 @@ export function DashboardView() {
             <Square className="size-4 mr-2" />
             Clock Out
           </Button>
+          {currentEntry && !activeBreak && (
+            <Button
+              onClick={() => handleQuickAction("take-break")}
+              size="sm"
+              variant="outline"
+              className="min-h-[44px] sm:min-h-0 rounded-xl bg-background/50"
+            >
+              <Coffee className="size-4 mr-2" />
+              Take Break
+            </Button>
+          )}
+          {activeBreak && (
+            <Button
+              onClick={() => handleQuickAction("resume")}
+              size="sm"
+              variant="default"
+              className="min-h-[44px] sm:min-h-0 rounded-xl shadow-sm"
+            >
+              <Play className="size-4 mr-2" />
+              Resume Work
+            </Button>
+          )}
           {isViewEnabled("tasks") && (
             <Button
               onClick={() => handleQuickAction("tasks")}
@@ -738,37 +855,101 @@ export function DashboardView() {
         </Card>
       </div>
 
-      {/* Current Work Session */}
+      {/* Current Work Session / Break */}
       {currentEntry && (
-        <Card className="border-chart-2/30 bg-card/80 shadow-lg shadow-chart-2/10 backdrop-blur">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="size-3 rounded-full bg-chart-2 animate-pulse flex-shrink-0" />
-                <div>
-                  <p className="text-sm sm:text-base font-semibold text-foreground">
-                    Currently Working
-                  </p>
-                  <p className="text-xs sm:text-sm text-muted-foreground">
-                    Started at {new Date(currentEntry.clockIn).toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
+        activeBreak ? (
+          <Card className={cn(
+            "backdrop-blur shadow-lg",
+            breakStatus?.ended
+              ? "border-red-500/40 bg-red-500/5 shadow-red-500/10"
+              : "border-amber-500/40 bg-amber-500/5 shadow-amber-500/10",
+          )}>
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="size-3 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm sm:text-base font-semibold text-foreground truncate">
+                      {breakStatus?.ended ? "Break time has ended!" : "On Break"}
+                      {activeBreak.title?.trim() ? ` · ${activeBreak.title.trim()}` : ""}
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">
+                      {breakStatus?.ended ? (
+                        "Tap Resume to get back to work — work activity is paused."
+                      ) : (
+                        <>
+                          <span className="tabular-nums font-semibold text-foreground">{breakStatus?.timer}</span>{" "}
+                          {breakStatus?.suffix} · work activity is paused
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => handleQuickAction("resume")}
+                  size="sm"
+                  variant="default"
+                  className="min-h-[44px] sm:min-h-0 flex-shrink-0"
+                >
+                  <Play className="size-4 mr-2" />
+                  Resume Work
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-chart-2/30 bg-card/80 shadow-lg shadow-chart-2/10 backdrop-blur">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="size-3 rounded-full bg-chart-2 animate-pulse flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm sm:text-base font-semibold text-foreground truncate">
+                      {currentEntry.title?.trim() || "Currently Working"}
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">
+                      Started at {new Date(currentEntry.clockIn).toLocaleTimeString("en-US", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      {currentSessionElapsed && (
+                        <>
+                          {" · "}
+                          <span className="tabular-nums font-semibold text-foreground">{currentSessionElapsed}</span> elapsed
+                        </>
+                      )}
+                    </p>
+                    {currentTaskElapsed && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        On this task: <span className="tabular-nums font-semibold text-foreground">{currentTaskElapsed}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button
+                    onClick={() => handleQuickAction("take-break")}
+                    size="sm"
+                    variant="outline"
+                    className="min-h-[44px] sm:min-h-0"
+                  >
+                    <Coffee className="size-4 mr-2" />
+                    Take Break
+                  </Button>
+                  <Button
+                    onClick={() => handleQuickAction("clock-out")}
+                    size="sm"
+                    variant="destructive"
+                    className="min-h-[44px] sm:min-h-0"
+                  >
+                    <Square className="size-4 mr-2" />
+                    Clock Out
+                  </Button>
                 </div>
               </div>
-              <Button
-                onClick={() => handleQuickAction("clock-out")}
-                size="sm"
-                variant="destructive"
-                className="min-h-[44px] sm:min-h-0"
-              >
-                <Square className="size-4 mr-2" />
-                Clock Out
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )
       )}
 
       {/* Goals and Habits Progress */}

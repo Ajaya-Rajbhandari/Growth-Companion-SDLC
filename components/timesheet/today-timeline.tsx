@@ -110,8 +110,10 @@ export function TodayTimeline() {
                     : "bg-muted/40 border border-border",
                 )}
               >
-                <span className="font-mono text-xs text-muted-foreground whitespace-nowrap w-16 sm:w-20">
+                <span className="font-mono text-[11px] sm:text-xs text-muted-foreground whitespace-nowrap shrink-0">
                   {formatTime(item.start)}
+                  <span className="mx-1 opacity-60">→</span>
+                  {item.end ? formatTime(item.end) : <span className="text-primary">now</span>}
                 </span>
                 <span className="flex-1 min-w-0 font-medium truncate">{item.label}</span>
                 {item.type === "break" && (

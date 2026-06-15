@@ -11,12 +11,15 @@ This guide will help you run the database migrations for the Growth Companion SD
 
 The following migration files need to be run in order:
 
+0. `migrations/000_initial_schema.sql` - **Baseline**: creates the core tables (tasks, notes, time_entries, work_templates, chat_sessions) with RLS. Run this FIRST on a fresh project. It is idempotent and safe to run on an existing database (it won't drop data).
 1. `migrations/001_add_time_categories.sql` - Adds time categories table and category column to time_entries
 2. `migrations/002_add_goals_table.sql` - Creates the goals table
 3. `migrations/003_add_urgency_to_tasks.sql` - Adds urgency column to tasks table
 4. `migrations/004_add_habits_tables.sql` - Creates habits and habit_logs tables
 5. `migrations/005_add_ai_analytics.sql` - Creates AI feedback and analytics tables
 6. `migrations/006_add_time_entry_subtasks.sql` - Adds subtask history storage to time_entries
+7. `migrations/007_add_completed_to_tasks.sql` - Adds the `completed` boolean column to tasks
+8. `migrations/008_cleanup_legacy_task_columns.sql` - Drops unused legacy columns from tasks (skill_id, description, estimated_minutes, difficulty, source_task_id, is_active). **Destructive** — see file header.
 
 ## Steps to Run Migrations
 
@@ -65,8 +68,9 @@ After running all migrations, verify the tables exist:
    - `ai_feedback`
    - `ai_insights`
 3. Check that the `tasks` table has a new `urgency` column
-4. Check that the `time_entries` table has a new `category` column
-5. Check that the `time_entries` table has a new `subtasks` column
+4. Check that the `tasks` table has a new `completed` column
+5. Check that the `time_entries` table has a new `category` column
+6. Check that the `time_entries` table has a new `subtasks` column
 
 ## Troubleshooting
 
@@ -86,12 +90,15 @@ After running all migrations, verify the tables exist:
 
 **IMPORTANT**: Run migrations in this exact order:
 
+0. ✅ `000_initial_schema.sql`
 1. ✅ `001_add_time_categories.sql`
 2. ✅ `002_add_goals_table.sql`
 3. ✅ `003_add_urgency_to_tasks.sql`
 4. ✅ `004_add_habits_tables.sql`
 5. ✅ `005_add_ai_analytics.sql`
 6. ✅ `006_add_time_entry_subtasks.sql`
+7. ✅ `007_add_completed_to_tasks.sql`
+8. ✅ `008_cleanup_legacy_task_columns.sql`
 
 ## After Migration
 

@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import { calculateDuration, formatTime, getBreakTypeBadgeColor, getBreakTypeLabel } from "./helpers"
+import { calculateDuration, formatTime, formatTimeRange, getBreakTypeBadgeColor, getBreakTypeLabel, getSessionHeadline } from "./helpers"
+import { SessionTasks } from "./session-tasks"
 
 interface MobileEntryCardProps {
   entry: TimeEntry
@@ -48,7 +49,7 @@ export function MobileEntryCard({
                 <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
               )}
               <span className="font-semibold text-sm truncate">
-                {entry.title || (
+                {getSessionHeadline(entry) || (
                   <span className="text-foreground/70 italic">No task specified</span>
                 )}
               </span>
@@ -118,8 +119,7 @@ export function MobileEntryCard({
                         {getBreakTypeLabel(breakPeriod.type, breakPeriod.title)}
                       </Badge>
                       <span className="text-foreground/70">
-                        {formatTime(breakPeriod.startTime)} -{" "}
-                        {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
+                        {formatTimeRange(breakPeriod.startTime, breakPeriod.endTime)}
                         {periodDuration && (
                           <span className="ml-1 text-foreground/60">
                             ({periodDuration.hours}h {periodDuration.minutes}m)
@@ -131,6 +131,7 @@ export function MobileEntryCard({
                 })}
               </div>
             )}
+            <SessionTasks entry={entry} />
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

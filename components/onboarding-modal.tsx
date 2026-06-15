@@ -173,7 +173,8 @@ export function OnboardingModal({ forceOpen, onClose }: OnboardingModalProps = {
             setIsVisible(false)
             onClose?.()
           })
-          .catch(() => {
+          .catch((error) => {
+            console.error("Failed to save onboarding status:", error)
             setErrorMessage("Failed to save onboarding status. Please try again.")
           })
       } else {
@@ -181,6 +182,7 @@ export function OnboardingModal({ forceOpen, onClose }: OnboardingModalProps = {
         onClose?.()
       }
     } else {
+      setErrorMessage("")
       setOnboardingStep(currentOnboardingStep + 1)
     }
   }
@@ -193,7 +195,8 @@ export function OnboardingModal({ forceOpen, onClose }: OnboardingModalProps = {
           setIsVisible(false)
           onClose?.()
         })
-        .catch(() => {
+        .catch((error) => {
+          console.error("Failed to save onboarding status:", error)
           setErrorMessage("Failed to save onboarding status. Please try again.")
         })
     } else {
@@ -260,7 +263,10 @@ export function OnboardingModal({ forceOpen, onClose }: OnboardingModalProps = {
             {onboardingSteps.map((_, index) => (
               <button
                 key={index}
-                onClick={() => setOnboardingStep(index)}
+                onClick={() => {
+                  setErrorMessage("")
+                  setOnboardingStep(index)
+                }}
                 className={`h-2 rounded-full transition-all ${
                   index === currentOnboardingStep
                     ? "bg-primary w-6"

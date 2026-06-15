@@ -14,6 +14,7 @@ import {
   getBreakTypeLabel,
 } from "./helpers"
 import type { SelectedBreak } from "./dialogs"
+import { SessionTasks } from "./session-tasks"
 
 interface ActiveSessionCardProps {
   elapsedTime: { hours: number; minutes: number; seconds: number }
@@ -136,39 +137,8 @@ export function ActiveSessionCard({
             </div>
           )}
 
-          {/* Show previous tasks if any */}
-          {currentEntry.subtasks && currentEntry.subtasks.length > 0 && (
-            <div className="bg-muted/30 rounded-lg p-3 border border-muted">
-              <p className="text-xs font-medium text-foreground/90 mb-2">Previous tasks in this session:</p>
-              <div className="space-y-1.5">
-                {currentEntry.subtasks.map((subtask) => {
-                  const subtaskDuration = calculateDuration(
-                    subtask.clockIn,
-                    subtask.clockOut,
-                    0,
-                  )
-                  return (
-                    <div
-                      key={subtask.id}
-                      className="flex items-center justify-between text-xs bg-background/50 rounded px-2 py-1.5"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <span className="text-foreground/90 font-medium truncate block">
-                          {subtask.title}
-                        </span>
-                        <span className="text-foreground/60 text-[10px]">
-                          {formatTime(subtask.clockIn)} → {subtask.clockOut ? formatTime(subtask.clockOut) : "..."}
-                        </span>
-                      </div>
-                      <span className="text-foreground/70 font-mono text-[10px] whitespace-nowrap ml-2">
-                        {subtaskDuration.hours}h {subtaskDuration.minutes}m
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+          {/* Full ordered task breakdown for this session (incl. the current task) */}
+          <SessionTasks entry={currentEntry} />
 
           {!activeBreak && (
             <>

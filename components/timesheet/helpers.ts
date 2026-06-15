@@ -48,6 +48,73 @@ export function formatMinutes(minutes: number): string {
   return `${hrs}h ${mins}m`
 }
 
+// The task a session STARTED with (matches the clock-in time) — the first subtask
+// if any switches happened, otherwise the entry's own title. Used to headline a
+// session row, so the headline lines up with the clock-in time rather than showing
+// whatever task happens to be current.
+export function getSessionHeadline(entry: TimeEntry): string {
+  const subtasks = entry.subtasks || []
+  if (subtasks.length > 0 && subtasks[0].title?.trim()) return subtasks[0].title
+  return entry.title || ""
+}
+
+const timeOnly = (d: Date) =>
+  d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
+const dateAndTime = (d: Date) =>
+  `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${timeOnly(d)}`
+
+// Format a start→end range. When the two land on different calendar days (e.g. a
+// session left open across days, or corrupted test data), the date is shown too so
+// the span reads correctly instead of looking like a short/negative same-day range.
+export function formatTimeRange(start: string, end?: string): string {
+  const s = new Date(start)
+  if (!end) {
+    const sameDayAsNow = s.toDateString() === new Date().toDateString()
+    return `${sameDayAsNow ? timeOnly(s) : dateAndTime(s)} → now`
+  }
+  const e = new Date(end)
+  if (s.toDateString() === e.toDateString()) return `${timeOnly(s)} → ${timeOnly(e)}`
+  return `${dateAndTime(s)} → ${dateAndTime(e)}`
+}
+
+export interface SessionTaskSegment {
+  id: string
+  title: string
+  start: string
+  end?: string
+  isCurrent: boolean
+}
+
+// The full ordered list of task segments in a session: every subtask (a task you
+// switched away from), plus the head task (`entry.title`) as the final segment —
+// marked `isCurrent` when the session is still open. Subtasks and the head task
+// are peers on a timeline; there is no parent/child hierarchy.
+export function getSessionTaskSegments(entry: TimeEntry): SessionTaskSegment[] {
+  const subtasks = entry.subtasks || []
+  const segments: SessionTaskSegment[] = subtasks.map((sub) => ({
+    id: sub.id,
+    title: sub.title,
+    start: sub.clockIn,
+    end: sub.clockOut,
+    isCurrent: false,
+  }))
+
+  if (entry.title && entry.title.trim()) {
+    const headStart = subtasks.length > 0
+      ? subtasks[subtasks.length - 1].clockOut || entry.clockIn
+      : entry.clockIn
+    segments.push({
+      id: `${entry.id}-current`,
+      title: entry.title,
+      start: headStart,
+      end: entry.clockOut,
+      isCurrent: !entry.clockOut,
+    })
+  }
+
+  return segments
+}
+
 export function calculateDuration(
   clockIn: string,
   clockOut?: string,
@@ -98,13 +165,12 @@ export function getBreakTypeBadgeColor(type?: "short" | "lunch" | "custom"): str
 
 export function calculateTotalHours(entries: TimeEntry[]): number {
   return entries.reduce((total, entry) => {
-    if (entry.clockOut) {
-      const start = new Date(entry.clockIn).getTime()
-      const end = new Date(entry.clockOut).getTime()
-      const diffMs = Math.max(0, end - start - entry.breakMinutes * 60 * 1000)
-      return total + diffMs / (1000 * 60 * 60)
-    }
-    return total
+    // Count in-progress sessions too (end = now), so the "worked" total matches the
+    // Duration shown for an open session instead of dropping it to 0.
+    const start = new Date(entry.clockIn).getTime()
+    const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
+    const diffMs = Math.max(0, end - start - entry.breakMinutes * 60 * 1000)
+    return total + diffMs / (1000 * 60 * 60)
   }, 0)
 }
 
