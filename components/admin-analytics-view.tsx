@@ -126,7 +126,7 @@ export function AdminAnalyticsView() {
                   contentStyle={{ fontSize: 12, borderRadius: 8 }}
                   labelFormatter={(d) => `Day ${d}`}
                 />
-                <Bar dataKey="dau" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Active users" />
+                <Bar dataKey="dau" fill="var(--primary)" radius={[4, 4, 0, 0]} name="Active users" />
               </BarChart>
             </ResponsiveContainer>
           )}
