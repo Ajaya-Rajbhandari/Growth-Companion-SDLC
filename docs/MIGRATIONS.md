@@ -106,6 +106,28 @@ After running all migrations, verify the tables exist:
 7. ✅ `007_add_completed_to_tasks.sql`
 8. ✅ `008_cleanup_legacy_task_columns.sql`
 
+## One-off Repairs
+
+`015_repair_inflated_time_entries.sql` is **not** a schema migration and is not
+required on a fresh deployment. It repairs time entries inflated by abandoned
+sessions on installations that ran before that bug was fixed — a session left
+open was recorded as running until "now", so closing it days later wrote a
+multi-day entry into history.
+
+Run it in three deliberate steps, not as a single paste:
+
+1. **STEP 1** (preview) — read-only. Shows every affected entry with its current
+   and post-repair hours. Inspect this before going further.
+2. **STEP 2** (repair) — clamps each entry to the longest span the owner's
+   settings allow (`office_hours + grace_minutes + allow_overwork_minutes`, plus
+   that entry's break minutes). Copies every modified row to
+   `time_entries_repair_backup` first.
+3. **STEP 3** (rollback, commented out) — restores the original `clock_out`
+   values from the backup table.
+
+It never touches an active session: an open entry is only closed once it has
+been open for more than 24 hours. Re-running it is a no-op.
+
 ## After Migration
 
 Once all migrations are complete:
