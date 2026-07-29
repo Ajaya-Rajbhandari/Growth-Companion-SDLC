@@ -21,6 +21,7 @@ import {
 import { toast } from "@/components/ui/use-toast"
 import { SeedTestDataButton } from "./seed-test-data-button"
 import { OnboardingModal } from "./onboarding-modal"
+import { FeedbackCard } from "./feedback-card"
 
 export function ProfileView() {
   const {
@@ -428,6 +429,8 @@ export function ProfileView() {
           </p>
         </CardContent>
       </Card>
+
+      <FeedbackCard />
 
       {process.env.NODE_ENV === "development" && <SeedTestDataButton />}
 

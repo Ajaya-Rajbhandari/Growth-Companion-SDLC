@@ -4,6 +4,7 @@ import { useState } from "react"
 import * as React from "react"
 import { ThumbsUp, ThumbsDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { useAppStore } from "@/lib/store"
@@ -19,7 +20,41 @@ export function AIFeedback({ messageId, sessionId, className }: AIFeedbackProps)
   const [feedback, setFeedback] = useState<"positive" | "negative" | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [existingFeedbackId, setExistingFeedbackId] = useState<string | null>(null)
+  // A thumb alone says a reply was bad but never why, which is all the admin
+  // inbox could ever show. Offer an optional one-line reason after a thumbs-down.
+  const [showReason, setShowReason] = useState(false)
+  const [reason, setReason] = useState("")
+  const [isSavingReason, setIsSavingReason] = useState(false)
   const user = useAppStore((state) => state.user)
+
+  const saveReason = async () => {
+    const text = reason.trim()
+    if (!text || !existingFeedbackId) {
+      setShowReason(false)
+      return
+    }
+    setIsSavingReason(true)
+    try {
+      const { error } = await supabase
+        .from("chat_feedback")
+        .update({ feedback_text: text.slice(0, 500) })
+        .eq("id", existingFeedbackId)
+      if (error) throw new Error(error.message)
+
+      setShowReason(false)
+      setReason("")
+      toast({ title: "Thanks — that helps", duration: 2000 })
+    } catch (error) {
+      toast({
+        title: "Couldn't save your note",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+        duration: 4000,
+      })
+    } finally {
+      setIsSavingReason(false)
+    }
+  }
 
   // Load existing feedback on mount
   React.useEffect(() => {
@@ -64,6 +99,8 @@ export function AIFeedback({ messageId, sessionId, className }: AIFeedbackProps)
           if (!error) {
             setFeedback(null)
             setExistingFeedbackId(null)
+            setShowReason(false)
+            setReason("")
             toast({
               title: "Feedback removed",
               description: "Your feedback has been removed.",
@@ -147,6 +184,8 @@ export function AIFeedback({ messageId, sessionId, className }: AIFeedbackProps)
         throw new Error(error.message || error.details || "Failed to submit feedback")
       }
 
+      setShowReason(type === "negative")
+
       toast({
         title: "Feedback recorded",
         description: `Your ${type} feedback was saved.`,
@@ -179,7 +218,8 @@ export function AIFeedback({ messageId, sessionId, className }: AIFeedbackProps)
   }
 
   return (
-    <div className={cn("flex items-center gap-0.5", className)}>
+    <div className={cn("space-y-1.5", className)}>
+      <div className="flex items-center gap-0.5">
       <Button
         type="button"
         variant="ghost"
@@ -210,6 +250,30 @@ export function AIFeedback({ messageId, sessionId, className }: AIFeedbackProps)
       >
         <ThumbsDown className="size-3.5" />
       </Button>
+      </div>
+
+      {showReason && (
+        <div className="flex items-center gap-1.5">
+          <Input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveReason()
+              if (e.key === "Escape") setShowReason(false)
+            }}
+            placeholder="What was wrong? (optional)"
+            maxLength={500}
+            className="h-8 text-xs"
+            aria-label="Why was this reply not helpful?"
+          />
+          <Button size="sm" className="h-8" onClick={saveReason} disabled={isSavingReason || !reason.trim()}>
+            {isSavingReason ? "Saving…" : "Send"}
+          </Button>
+          <Button size="sm" variant="ghost" className="h-8" onClick={() => setShowReason(false)}>
+            Skip
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

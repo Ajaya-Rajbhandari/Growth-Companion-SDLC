@@ -5,6 +5,31 @@ import { supabase } from "@/lib/supabase"
 import { Card, CardContent } from "@/components/ui/card"
 import { ThumbsUp, ThumbsDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { AdminUserFeedbackList } from "./admin-user-feedback-list"
+
+function TabBar({ tab, onChange }: { tab: "user" | "ai"; onChange: (t: "user" | "ai") => void }) {
+  return (
+    <div className="flex gap-1.5 border-b border-border">
+      {([
+        { key: "user", label: "From users" },
+        { key: "ai", label: "AI replies" },
+      ] as const).map((t) => (
+        <button
+          key={t.key}
+          onClick={() => onChange(t.key)}
+          className={cn(
+            "px-3 py-2 text-sm transition-colors -mb-px border-b-2",
+            tab === t.key
+              ? "border-primary text-foreground font-medium"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 interface Feedback {
   id: string
@@ -24,7 +49,10 @@ const FILTERS = [
   { key: "negative", label: "Negative" },
 ]
 
+type Tab = "user" | "ai"
+
 export function AdminFeedbackView() {
+  const [tab, setTab] = useState<Tab>("user")
   const [items, setItems] = useState<Feedback[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -45,35 +73,49 @@ export function AdminFeedbackView() {
   }, [])
 
   useEffect(() => {
-    load(filter)
-  }, [filter, load])
+    if (tab === "ai") load(filter)
+  }, [tab, filter, load])
 
   const positive = items.filter((i) => i.feedback_type === "positive").length
   const negative = items.filter((i) => i.feedback_type === "negative").length
 
+  if (tab === "user") {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Feedback</h1>
+          <p className="text-sm text-muted-foreground mt-1">What users are telling you about the app.</p>
+        </div>
+        <TabBar tab={tab} onChange={setTab} />
+        <AdminUserFeedbackList />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">AI Feedback</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Thumbs on assistant replies · {positive} positive · {negative} negative (in view)
-          </p>
-        </div>
-        <div className="flex gap-1.5">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-sm transition-colors",
-                filter === f.key ? "bg-primary/10 text-primary ring-1 ring-primary/20" : "text-muted-foreground hover:bg-muted/50",
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Feedback</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Thumbs on assistant replies · {positive} positive · {negative} negative (in view)
+        </p>
+      </div>
+
+      <TabBar tab={tab} onChange={setTab} />
+
+      <div className="flex gap-1.5">
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            className={cn(
+              "px-3 py-1.5 rounded-lg text-sm transition-colors",
+              filter === f.key ? "bg-primary/10 text-primary ring-1 ring-primary/20" : "text-muted-foreground hover:bg-muted/50",
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
