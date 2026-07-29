@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
-import { getLocalDateKey } from "@/lib/utils"
+import { getLocalDateKey, resolveEntryEnd } from "@/lib/utils"
 import { checkRateLimit, rateLimitResponse } from "@/lib/server/rate-limit"
 import { AssistantRequestSchema } from "@/lib/server/schemas"
 import { fetchGemini, toGeminiContents } from "@/lib/server/gemini"
@@ -658,7 +658,7 @@ function executeTool(
 
         let todayHours = todayEntries.reduce(
           (total: number, entry: { clockOut?: string; clockIn: string; breakMinutes: number }) => {
-            const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
+            const end = resolveEntryEnd(entry.clockIn, entry.clockOut)
             const start = new Date(entry.clockIn).getTime()
             const diffMs = end - start - (entry.breakMinutes || 0) * 60 * 1000
             return total + diffMs / (1000 * 60 * 60)
@@ -698,7 +698,7 @@ function executeTool(
 
         let todayHours = todayEntries.reduce(
           (total: number, entry: { clockOut?: string; clockIn: string; breakMinutes: number }) => {
-            const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
+            const end = resolveEntryEnd(entry.clockIn, entry.clockOut)
             const start = new Date(entry.clockIn).getTime()
             const diffMs = end - start - (entry.breakMinutes || 0) * 60 * 1000
             return total + diffMs / (1000 * 60 * 60)

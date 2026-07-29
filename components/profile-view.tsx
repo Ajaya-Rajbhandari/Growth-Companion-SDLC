@@ -54,6 +54,8 @@ export function ProfileView() {
   const [editOfficeHours, setEditOfficeHours] = useState(officeHours.toString())
   const [isEditingHours, setIsEditingHours] = useState(false)
   const [hoursError, setHoursError] = useState("")
+  const [safetyError, setSafetyError] = useState("")
+  const [isSavingSafety, setIsSavingSafety] = useState(false)
   const [selectedGrace, setSelectedGrace] = useState(graceMinutes.toString())
   const [selectedOverwork, setSelectedOverwork] = useState(allowOverworkMinutes.toString())
   const [showHelpTour, setShowHelpTour] = useState(false)
@@ -94,37 +96,51 @@ export function ProfileView() {
     }
   }
 
+  // Both handlers persist to the account before touching the store: updating the
+  // store first leaves the UI (and the clock-in limit logic) showing a value the
+  // account never received, which silently reverts on the next reload.
   const handleUpdateOfficeHours = async () => {
     const hours = Number.parseInt(editOfficeHours, 10)
     setHoursError("")
+    if (isNaN(hours) || hours < 1 || hours > 24) {
+      setHoursError("Office hours must be between 1 and 24 hours")
+      return
+    }
     try {
-      if (isNaN(hours) || hours < 1 || hours > 24) {
-        throw new Error("Office hours must be between 1 and 24 hours")
-      }
-      setOfficeHours(hours)
       await updateUserProfile({ officeHours: hours })
+      setOfficeHours(hours)
       setIsEditingHours(false)
+      toast({ title: "Office hours updated", description: `Your daily limit is now ${hours} hours.` })
     } catch (error) {
       setHoursError(error instanceof Error ? error.message : "Invalid office hours")
     }
   }
 
   const handleUpdateTimeSafety = async () => {
-    setHoursError("")
+    setSafetyError("")
+    const graceValue = Number.parseInt(selectedGrace, 10)
+    const overworkValue = Number.parseInt(selectedOverwork, 10)
+    if (![0, 10, 15].includes(graceValue)) {
+      setSafetyError("Grace must be 0, 10, or 15 minutes")
+      return
+    }
+    if (isNaN(overworkValue) || overworkValue < 0 || overworkValue > 60) {
+      setSafetyError("Overwork must be between 0 and 60 minutes")
+      return
+    }
+    setIsSavingSafety(true)
     try {
-      const graceValue = Number.parseInt(selectedGrace, 10)
-      const overworkValue = Number.parseInt(selectedOverwork, 10)
-      if (![0, 10, 15].includes(graceValue)) {
-        throw new Error("Grace must be 0, 10, or 15 minutes")
-      }
-      if (isNaN(overworkValue) || overworkValue < 0 || overworkValue > 60) {
-        throw new Error("Overwork must be between 0 and 60 minutes")
-      }
+      await updateUserProfile({ graceMinutes: graceValue, allowOverworkMinutes: overworkValue })
       setGraceMinutes(graceValue)
       setAllowOverworkMinutes(overworkValue)
-      await updateUserProfile({ graceMinutes: graceValue, allowOverworkMinutes: overworkValue })
+      toast({
+        title: "Safety settings saved",
+        description: `Grace ${graceValue === 0 ? "off" : `${graceValue} min`}, up to ${overworkValue} min overwork.`,
+      })
     } catch (error) {
-      setHoursError(error instanceof Error ? error.message : "Failed to update settings")
+      setSafetyError(error instanceof Error ? error.message : "Failed to update settings")
+    } finally {
+      setIsSavingSafety(false)
     }
   }
 
@@ -332,9 +348,15 @@ export function ProfileView() {
             </div>
           </div>
 
+          {safetyError && <p className="text-xs text-destructive">{safetyError}</p>}
+
           <div className="flex justify-end">
-            <Button onClick={handleUpdateTimeSafety} className="bg-primary text-primary-foreground">
-              Save Safety Settings
+            <Button
+              onClick={handleUpdateTimeSafety}
+              disabled={isSavingSafety}
+              className="bg-primary text-primary-foreground"
+            >
+              {isSavingSafety ? "Saving…" : "Save Safety Settings"}
             </Button>
           </div>
         </CardContent>

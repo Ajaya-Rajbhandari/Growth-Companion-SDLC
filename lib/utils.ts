@@ -18,6 +18,24 @@ export function parseLocalDateKey(dateKey: string): Date {
   return new Date(year, month - 1, day)
 }
 
+/** End of the local calendar day that `iso` falls in, as epoch milliseconds. */
+export function endOfLocalDayMs(iso: string): number {
+  const date = new Date(iso)
+  date.setHours(23, 59, 59, 999)
+  return date.getTime()
+}
+
+/**
+ * Effective end of a time entry, in epoch milliseconds. A finished entry ends
+ * when it was clocked out. An open one ends "now" so the timer ticks live — but
+ * never past midnight of the day it started, so a session someone forgot to
+ * close stops accruing instead of gaining another 24h every day.
+ */
+export function resolveEntryEnd(clockIn: string, clockOut?: string, now = Date.now()): number {
+  if (clockOut) return new Date(clockOut).getTime()
+  return Math.min(now, endOfLocalDayMs(clockIn))
+}
+
 /** Capitalize the first letter of each whitespace-separated word. */
 export function capitalizeName(value: string): string {
   return value

@@ -25,7 +25,7 @@ import {
   Filter,
   X
 } from "lucide-react"
-import { cn, parseLocalDateKey } from "@/lib/utils"
+import { cn, parseLocalDateKey, resolveEntryEnd } from "@/lib/utils"
 import { useLocalDay } from "@/lib/hooks/use-local-day"
 import { format, isSameDay, parseISO, startOfDay, startOfWeek, endOfWeek, eachDayOfInterval, addDays, subDays, startOfMonth, endOfMonth, isSameMonth, getDay } from "date-fns"
 import { toast } from "@/components/ui/use-toast"
@@ -46,7 +46,7 @@ interface CalendarEvent {
 
 function calculateDuration(clockIn: string, clockOut?: string, breakMinutes = 0): string {
   const start = new Date(clockIn).getTime()
-  const end = clockOut ? new Date(clockOut).getTime() : Date.now()
+  const end = resolveEntryEnd(clockIn, clockOut)
   const diffMs = Math.max(0, end - start - breakMinutes * 60 * 1000)
   const hours = Math.floor(diffMs / (1000 * 60 * 60))
   const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
