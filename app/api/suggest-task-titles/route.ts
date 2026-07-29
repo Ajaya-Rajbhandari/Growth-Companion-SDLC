@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedUser } from "@/lib/server/auth"
 import { checkRateLimit } from "@/lib/server/rate-limit"
 import { SuggestTaskTitlesRequestSchema } from "@/lib/server/schemas"
-import { extractGeminiText, fetchGemini } from "@/lib/server/gemini"
+import { extractGeminiText, fetchGemini, THINKING_DISABLED } from "@/lib/server/gemini"
 import { readJsonBody } from "@/lib/server/request"
 
 export const dynamic = "force-dynamic"
@@ -74,7 +74,8 @@ export async function POST(request: NextRequest) {
         generationConfig: {
           responseMimeType: "application/json",
           temperature: 0.5,
-          maxOutputTokens: 200,
+          maxOutputTokens: 400,
+          thinkingConfig: THINKING_DISABLED,
         },
       }),
     }, 12_000)
@@ -99,8 +100,13 @@ export async function POST(request: NextRequest) {
           .slice(0, 5)
       }
     } catch {
-      const lines = raw.split("\n").map((s) => s.replace(/^[-*]\s*/, "").trim()).filter(Boolean)
-      suggestions = lines.slice(0, 5)
+      // A truncated JSON array still holds usable titles; strip the punctuation.
+      suggestions = raw
+        .split("\n")
+        .map((line) => line.trim().replace(/^[-*]\s*/, "").replace(/^\[|[,\]]+$/g, "").trim())
+        .map((line) => line.replace(/^"(.*)"$/, "$1").trim())
+        .filter((line) => line.length > 0 && line.length <= 100)
+        .slice(0, 5)
     }
 
     return NextResponse.json({ suggestions })

@@ -1,5 +1,5 @@
 import { getAuthenticatedUser } from "@/lib/server/auth"
-import { extractGeminiText, fetchGemini } from "@/lib/server/gemini"
+import { extractGeminiText, fetchGemini, geminiFinishReason, THINKING_DISABLED } from "@/lib/server/gemini"
 import { checkRateLimit, rateLimitResponse } from "@/lib/server/rate-limit"
 import { InsightsRequestSchema } from "@/lib/server/schemas"
 import { readJsonBody } from "@/lib/server/request"
@@ -46,23 +46,43 @@ export async function POST(request: Request) {
         generationConfig: {
           responseMimeType: "application/json",
           temperature: 0.6,
-          maxOutputTokens: 400,
+          maxOutputTokens: 800,
+          thinkingConfig: THINKING_DISABLED,
         },
       }),
     }, 12_000)
 
     if (!res.ok) {
+      console.error("[insights] Gemini error:", await res.text())
       return Response.json({ error: "The coach is unavailable right now." }, { status: 502 })
     }
 
     const json = await res.json()
-    const content = extractGeminiText(json) || "{}"
-    const parsed = JSON.parse(content)
+    const content = extractGeminiText(json)
+    if (!content) {
+      console.error("[insights] Empty reply, finishReason:", geminiFinishReason(json))
+      return Response.json({ error: "The coach is unavailable right now." }, { status: 502 })
+    }
+
+    let parsed: { insight?: unknown; suggestions?: unknown }
+    try {
+      parsed = JSON.parse(content)
+    } catch {
+      console.error(
+        `[insights] Unparseable reply (finishReason: ${geminiFinishReason(json)}):`,
+        content.slice(0, 200),
+      )
+      return Response.json({ error: "The coach is unavailable right now." }, { status: 502 })
+    }
+
     return Response.json({
       insight: typeof parsed.insight === "string" ? parsed.insight : "",
-      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 4) : [],
+      suggestions: Array.isArray(parsed.suggestions)
+        ? parsed.suggestions.filter((s): s is string => typeof s === "string").slice(0, 4)
+        : [],
     })
-  } catch {
+  } catch (e) {
+    console.error("[insights]", e)
     return Response.json({ error: "Couldn't generate insights." }, { status: 500 })
   }
 }
