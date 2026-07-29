@@ -25,7 +25,8 @@ import {
   Filter,
   X
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, parseLocalDateKey } from "@/lib/utils"
+import { useLocalDay } from "@/lib/hooks/use-local-day"
 import { format, isSameDay, parseISO, startOfDay, startOfWeek, endOfWeek, eachDayOfInterval, addDays, subDays, startOfMonth, endOfMonth, isSameMonth, getDay } from "date-fns"
 import { toast } from "@/components/ui/use-toast"
 
@@ -74,6 +75,12 @@ export function CalendarView() {
   const [newEventPriority, setNewEventPriority] = useState<"low" | "medium" | "high">("medium")
   const [eventFilter, setEventFilter] = useState<"all" | "tasks" | "time_entries" | "goals" | "habits">("all")
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
+
+  // Live local day. Daily-habit events, the "today" highlight, and overdue checks
+  // all key off this so they move with the calendar rather than sticking to
+  // whatever day the view was first mounted on.
+  const { dayKey: todayKey } = useLocalDay()
+  const todayDate = useMemo(() => parseLocalDateKey(todayKey), [todayKey])
 
   // Combine tasks, time entries, goals, and habits into calendar events
   const calendarEvents = useMemo(() => {
@@ -128,7 +135,7 @@ export function CalendarView() {
     habits.forEach((habit) => {
       // For daily habits, show them every day
       if (habit.frequency === "daily") {
-        const today = format(new Date(), "yyyy-MM-dd")
+        const today = todayKey
         events.push({
           id: `habit-${habit.id}-${today}`,
           title: habit.title,
@@ -139,7 +146,7 @@ export function CalendarView() {
     })
 
     return events
-  }, [tasks, timeEntries, goals, habits])
+  }, [tasks, timeEntries, goals, habits, todayKey])
 
   // Filter events based on selected filter
   const filteredEvents = useMemo(() => {
@@ -172,7 +179,7 @@ export function CalendarView() {
       hasGoal: [],
       hasHabit: [],
       hasHighPriority: [],
-      today: [new Date()],
+      today: [todayDate],
     }
 
     filteredEvents.forEach((event) => {
@@ -192,7 +199,7 @@ export function CalendarView() {
     })
 
     return modifiers
-  }, [filteredEvents])
+  }, [filteredEvents, todayDate])
 
   // Week view calculations
   const weekStart = useMemo(() => {
@@ -288,8 +295,7 @@ export function CalendarView() {
 
   // Check if date is overdue
   const isOverdue = (dateStr: string): boolean => {
-    const today = format(new Date(), "yyyy-MM-dd")
-    return dateStr < today
+    return dateStr < todayKey
   }
 
   const navigateMonth = (direction: "prev" | "next") => {

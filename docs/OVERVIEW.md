@@ -2,7 +2,7 @@
 
 > Formerly `PROJECT_SUMMARY.md`. For release readiness and remaining work, see [STATUS.md](STATUS.md).
 
-Growth Companion SDLC is a personal productivity Progressive Web App built with Next.js, React, TypeScript, Supabase, and OpenAI. It provides task management, note-taking, time tracking with safety features, goal setting, habit tracking, calendar views, and an embedded AI assistant.
+Growth Companion SDLC is a personal productivity Progressive Web App built with Next.js, React, TypeScript, Supabase, and Gemini. It provides task management, note-taking, time tracking with safety features, goal setting, habit tracking, calendar views, and an embedded AI assistant.
 
 ## Features
 
@@ -57,7 +57,7 @@ Growth Companion SDLC is a personal productivity Progressive Web App built with 
 - **Language:** TypeScript (build runs with type checking enabled; there is no `ignoreBuildErrors` override)
 - **State:** Zustand (with versioned persistence)
 - **Database/Auth:** Supabase (PostgreSQL, RLS)
-- **AI:** OpenAI API
+- **AI:** Gemini API
 - **Testing:** Vitest (unit/integration) + Playwright (E2E)
 - **Deployment:** Vercel (npm as package manager)
 
@@ -87,7 +87,8 @@ growth-companion-sdlc/
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-OPENAI_API_KEY=your_openai_api_key   # optional; AI features degrade gracefully without it
+GEMINI_API_KEY=your_gemini_api_key   # optional; AI features degrade gracefully without it
+GEMINI_MODEL=gemini-2.5-flash        # optional model override
 ```
 
 ## Documentation Map

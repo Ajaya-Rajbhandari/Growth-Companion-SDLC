@@ -18,6 +18,7 @@ import {
   stopNotificationSound,
   type NotificationSoundId,
 } from "@/lib/notification-sound"
+import { toast } from "@/components/ui/use-toast"
 import { SeedTestDataButton } from "./seed-test-data-button"
 import { OnboardingModal } from "./onboarding-modal"
 
@@ -62,8 +63,19 @@ export function ProfileView() {
     setNotificationSoundId(getStoredSoundId())
   }, [])
 
-  const handleLogout = () => {
-    logout()
+  // logout clears local state only after signOut resolves, so navigating without
+  // awaiting could land on /auth with the session still live.
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch (error) {
+      toast({
+        title: "Sign out failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+      return
+    }
     router.push("/auth")
   }
 
@@ -82,7 +94,7 @@ export function ProfileView() {
     }
   }
 
-  const handleUpdateOfficeHours = () => {
+  const handleUpdateOfficeHours = async () => {
     const hours = Number.parseInt(editOfficeHours, 10)
     setHoursError("")
     try {
@@ -90,6 +102,7 @@ export function ProfileView() {
         throw new Error("Office hours must be between 1 and 24 hours")
       }
       setOfficeHours(hours)
+      await updateUserProfile({ officeHours: hours })
       setIsEditingHours(false)
     } catch (error) {
       setHoursError(error instanceof Error ? error.message : "Invalid office hours")

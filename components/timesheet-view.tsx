@@ -153,37 +153,45 @@ export function TimesheetView() {
     setBreakEndedAlert(false)
   }, [])
 
-  // Elapsed time tracking
+  // Elapsed time tracking. Work time stops accruing the moment a break starts, so
+  // the session clock is frozen at the break's start time instead of ticking on.
+  // This still runs during a break so a fresh mount (e.g. a refresh that restored
+  // an unfinished break) shows the frozen value rather than 00:00:00.
   useEffect(() => {
-    if (currentEntry && !activeBreak) {
-      const updateElapsedTime = () => {
-        const start = new Date(currentEntry.clockIn).getTime()
-        const now = Date.now()
-        const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
-        const diffMs = Math.max(0, now - start - breakMs)
+    if (!currentEntry) {
+      setElapsedTime({ hours: 0, minutes: 0, seconds: 0 })
+      return
+    }
 
-        const hours = Math.floor(diffMs / (1000 * 60 * 60))
-        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-        const seconds = Math.floor((diffMs % (1000 * 60)) / 1000)
+    const updateElapsedTime = () => {
+      const start = new Date(currentEntry.clockIn).getTime()
+      const end = activeBreak ? new Date(activeBreak.startTime).getTime() : Date.now()
+      const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
+      const diffMs = Math.max(0, end - start - breakMs)
 
-        setElapsedTime({ hours, minutes, seconds })
+      const hours = Math.floor(diffMs / (1000 * 60 * 60))
+      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+      const seconds = Math.floor((diffMs % (1000 * 60)) / 1000)
+
+      setElapsedTime({ hours, minutes, seconds })
+    }
+
+    updateElapsedTime()
+    if (activeBreak) return
+
+    const interval = setInterval(updateElapsedTime, 1000)
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        updateElapsedTime()
       }
+    }
 
-      updateElapsedTime()
-      const interval = setInterval(updateElapsedTime, 1000)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
 
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === "visible") {
-          updateElapsedTime()
-        }
-      }
-
-      document.addEventListener("visibilitychange", handleVisibilityChange)
-
-      return () => {
-        clearInterval(interval)
-        document.removeEventListener("visibilitychange", handleVisibilityChange)
-      }
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
   }, [currentEntry, activeBreak])
 
@@ -257,19 +265,24 @@ export function TimesheetView() {
     }
     if (workStats.status === "hardCap" && currentEntry && !autoClockedOutRef.current) {
       autoClockedOutRef.current = true
-      const entryId = currentEntry.id
       clockOut()
         .then(() => {
-          if (entryId) {
-            // Note: updateEntryNotes is not in the store extraction yet, but we're avoiding it here for now
-          }
           toast({
             title: "Auto clocked out",
             description: `Reached your limit.`,
           })
           resetOverworkForToday()
         })
-        .catch(() => {})
+        .catch((error) => {
+          // Release the latch so the next tick can retry — otherwise a single
+          // failed write leaves the session open with no further attempt.
+          autoClockedOutRef.current = false
+          toast({
+            title: "Couldn't auto clock out",
+            description: error instanceof Error ? error.message : "You are still clocked in.",
+            variant: "destructive",
+          })
+        })
     } else if (workStats.status !== "hardCap") {
       autoClockedOutRef.current = false
     }
@@ -321,6 +334,24 @@ export function TimesheetView() {
 
     return entries
   }, [timeEntries, selectedDate, viewPeriod, currentEntry, categoryFilter])
+
+  // clockOut throws when the Supabase write fails. Without this the rejection is
+  // unhandled and the user is told nothing while still being clocked in.
+  const handleClockOut = async () => {
+    try {
+      await clockOut()
+      toast({
+        title: "Clocked out",
+        description: "Your session has been saved.",
+      })
+    } catch (error) {
+      toast({
+        title: "Couldn't clock out",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
 
   const handleEndBreak = async () => {
     stopAlarm()
@@ -444,7 +475,7 @@ export function TimesheetView() {
             onSwitchTask={() => setSwitchTaskDialogOpen(true)}
             onTakeBreak={() => setBreakDialogOpen(true)}
             onRequestOverwork={() => setOverworkDialogOpen(true)}
-            onClockOut={() => clockOut()}
+            onClockOut={handleClockOut}
             onEditBreak={(selectedBreak) => setSelectedBreak(selectedBreak)}
           />
         )}
@@ -462,7 +493,7 @@ export function TimesheetView() {
           onSelectedDateChange={setSelectedDate}
           filteredEntries={filteredEntries}
           elapsedTime={elapsedTime}
-          onClockOut={() => clockOut()}
+          onClockOut={handleClockOut}
           onOpenNotes={setSelectedEntry}
           onEditBreak={setSelectedBreak}
         />

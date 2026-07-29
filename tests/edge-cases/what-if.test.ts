@@ -29,6 +29,18 @@ vi.mock("@/lib/supabase", () => ({
   },
 }))
 
+// startBreak now persists the new break onto the time entry before it becomes
+// active, so any per-test `from()` override used around a break needs an update
+// chain in addition to insert.
+const mockOkUpdate = () =>
+  vi.fn(() => ({
+    eq: vi.fn(() => ({
+      select: vi.fn(() => ({
+        single: vi.fn(() => ({ data: null, error: null })),
+      })),
+    })),
+  }))
+
 describe("What If Scenarios - Edge Cases", () => {
   beforeEach(() => {
     useAppStore.setState({
@@ -64,7 +76,7 @@ describe("What If Scenarios - Edge Cases", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("First Task")
 
@@ -93,10 +105,10 @@ describe("What If Scenarios - Edge Cases", () => {
   })
 
   describe("What if user tries to start break when not clocked in?", () => {
-    it("should not start break when not clocked in", () => {
+    it("should not start break when not clocked in", async () => {
       const { startBreak } = useAppStore.getState()
 
-      startBreak(15, "short")
+      await expect(startBreak(15, "short")).rejects.toThrow("You must be clocked in to start a break.")
 
       const { activeBreak } = useAppStore.getState()
       expect(activeBreak).toBeNull()
@@ -125,11 +137,11 @@ describe("What If Scenarios - Edge Cases", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Test Task")
 
-      startBreak(15, "short", "First break")
+      await startBreak(15, "short", "First break")
       const { activeBreak: firstBreak } = useAppStore.getState()
       expect(firstBreak).not.toBeNull()
       expect(firstBreak?.title).toBe("First break")
@@ -137,7 +149,7 @@ describe("What If Scenarios - Edge Cases", () => {
       // Try to start another break
       // Note: Implementation may prevent starting a new break while one is active
       // or it may replace the current break
-      startBreak(30, "lunch", "Second break")
+      await expect(startBreak(30, "lunch", "Second break")).rejects.toThrow("A break is already active.")
       const { activeBreak: secondBreak } = useAppStore.getState()
       
       // Implementation may either:
@@ -254,12 +266,12 @@ describe("What If Scenarios - Edge Cases", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Test Task")
 
       // Start 2 hour break (longer than session)
-      startBreak(120, "custom", "Long break")
+      await startBreak(120, "custom", "Long break")
 
       const entryData = {
         id: "entry-1",
@@ -325,7 +337,7 @@ describe("What If Scenarios - Edge Cases", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Task to Delete")
 
@@ -352,7 +364,7 @@ describe("What If Scenarios - Edge Cases", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await expect(clockIn("Test Task")).rejects.toThrow()
 
@@ -382,7 +394,7 @@ describe("What If Scenarios - Edge Cases", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("First Task")
 
@@ -476,7 +488,7 @@ describe("What If Scenarios - Edge Cases", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       // Note: This test verifies behavior with null data
       // The actual implementation may throw or handle gracefully
@@ -514,12 +526,12 @@ describe("What If Scenarios - Edge Cases", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Test Task")
 
       const longTitle = "A".repeat(200)
-      startBreak(15, "custom", longTitle)
+      await startBreak(15, "custom", longTitle)
 
       const { activeBreak } = useAppStore.getState()
       expect(activeBreak?.title).toBe(longTitle)

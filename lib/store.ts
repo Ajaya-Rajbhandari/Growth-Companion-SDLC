@@ -48,13 +48,17 @@ export const useAppStore = create<AppState>()(
       // Bump `version` and handle the old shape in `migrate` whenever the
       // persisted state shape changes, so existing users' localStorage
       // rehydrates cleanly instead of corrupting the store.
-      version: 1,
-      migrate: (persistedState, version) => {
-        if (version < 1) {
-          // v0 → v1: no shape change; versioning introduced.
-          return persistedState as AppState
-        }
-        return persistedState as AppState
+      version: 2,
+      // Keep only account-neutral UI preferences in localStorage. User data is
+      // always reloaded from Supabase after authentication.
+      partialize: (state) => ({
+        activeView: state.activeView,
+      }) as AppState,
+      migrate: (persistedState) => {
+        const previous = persistedState as Partial<AppState> | undefined
+        return {
+          activeView: previous?.activeView ?? "dashboard",
+        } as AppState
       },
     },
   ),

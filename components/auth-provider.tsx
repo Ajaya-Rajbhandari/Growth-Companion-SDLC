@@ -16,25 +16,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     )
 
     useEffect(() => {
+        const applySessionUser = (sessionUser: {
+            id: string
+            email?: string
+            created_at: string
+            user_metadata: Record<string, unknown>
+        }) => {
+            const metadata = sessionUser.user_metadata
+            const officeHours = typeof metadata.office_hours === "number" ? metadata.office_hours : 9
+            const graceMinutes = typeof metadata.grace_minutes === "number" ? metadata.grace_minutes : 0
+            const allowOverworkMinutes =
+                typeof metadata.allow_overwork_minutes === "number" ? metadata.allow_overwork_minutes : 60
+
+            setUser({
+                id: sessionUser.id,
+                name: deriveDisplayName(metadata.full_name as string | undefined, sessionUser.email),
+                email: sessionUser.email || "",
+                createdAt: sessionUser.created_at,
+                officeHours,
+                graceMinutes,
+                allowOverworkMinutes,
+            })
+            useAppStore.setState({ officeHours, graceMinutes, allowOverworkMinutes })
+            setOnboardingStatus(Boolean(metadata.hasCompletedOnboarding))
+        }
+
+        const hydrateAuthenticatedUser = async (
+            sessionUser: Parameters<typeof applySessionUser>[0],
+        ) => {
+            applySessionUser(sessionUser)
+            await useAppStore.getState().fetchInitialData()
+        }
+
         // Load DB feature-flag overrides (public-read) so live admin toggles apply.
         useAppStore.getState().loadFeatureFlags()
 
         // 1. Check current session
         let isMounted = true
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
             if (!isMounted) return
             if (session?.user) {
-                setUser({
-                    id: session.user.id,
-                    name: deriveDisplayName(session.user.user_metadata.full_name, session.user.email),
-                    email: session.user.email || "",
-                    createdAt: session.user.created_at,
-                })
-                setOnboardingStatus(Boolean(session.user.user_metadata?.hasCompletedOnboarding))
-                useAppStore.getState().fetchInitialData()
+                await hydrateAuthenticatedUser(session.user)
             } else {
                 setUser(null)
             }
+            if (!isMounted) return
             setAuthInitialized(true)
         })
 
@@ -43,14 +69,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             data: { subscription },
         } = supabase.auth.onAuthStateChange((_event, session) => {
             if (session?.user) {
-                setUser({
-                    id: session.user.id,
-                    name: deriveDisplayName(session.user.user_metadata.full_name, session.user.email),
-                    email: session.user.email || "",
-                    createdAt: session.user.created_at,
-                })
-                setOnboardingStatus(Boolean(session.user.user_metadata?.hasCompletedOnboarding))
-                useAppStore.getState().fetchInitialData()
+                // Keep the auth callback synchronous. Supabase operations awaited
+                // inside this callback can block later client requests.
+                applySessionUser(session.user)
+                void useAppStore.getState().fetchInitialData()
             } else {
                 setUser(null)
             }

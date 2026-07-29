@@ -20,26 +20,7 @@ export const createNotesSlice: StateCreator<
   [],
   NotesSlice
 > = (set, get) => ({
-  notes: [
-    {
-      id: "1",
-      title: "Meeting Notes",
-      content: "Discussed Q1 goals and roadmap priorities. Key action items: finalize specs, review budget.",
-      category: "work",
-      tags: ["Q1", "roadmap"],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "2",
-      title: "Ideas",
-      content: "New feature concepts for the dashboard. Consider adding analytics widgets and custom themes.",
-      category: "ideas",
-      tags: ["dashboard", "features"],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ],
+  notes: [],
 
   addNote: async (note) => {
     const { user } = get()

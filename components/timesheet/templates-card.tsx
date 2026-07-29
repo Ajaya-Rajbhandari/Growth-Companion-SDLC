@@ -5,6 +5,7 @@ import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Calendar } from "lucide-react"
+import { toast } from "@/components/ui/use-toast"
 
 export function TemplatesCard() {
   const { workTemplates, deleteWorkTemplate } = useAppStore(
@@ -13,6 +14,19 @@ export function TemplatesCard() {
       deleteWorkTemplate: state.deleteWorkTemplate,
     })),
   )
+
+  const handleDelete = async (id: string, title: string) => {
+    try {
+      await deleteWorkTemplate(id)
+      toast({ title: "Template deleted", description: `"${title}" removed.` })
+    } catch (error) {
+      toast({
+        title: "Delete failed",
+        description: error instanceof Error ? error.message : "Unable to delete template.",
+        variant: "destructive",
+      })
+    }
+  }
 
   if (workTemplates.length === 0) return null
 
@@ -32,7 +46,7 @@ export function TemplatesCard() {
                 <p className="font-medium text-sm">{template.title}</p>
                 <p className="text-xs text-foreground/70">Used {template.usageCount} times</p>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => deleteWorkTemplate(template.id)}>
+              <Button variant="ghost" size="sm" onClick={() => handleDelete(template.id, template.title)}>
                 ×
               </Button>
             </div>

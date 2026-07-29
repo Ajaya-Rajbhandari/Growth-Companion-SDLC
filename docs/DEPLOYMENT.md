@@ -10,8 +10,8 @@ You **must** add these environment variables in your Vercel project settings:
 2. **NEXT_PUBLIC_SUPABASE_ANON_KEY**
    - Your Supabase anonymous/public key
 
-3. **OPENAI_API_KEY**
-   - Your OpenAI API key for the AI assistant feature
+3. **GEMINI_API_KEY**
+   - Your Gemini API key for the AI assistant feature
 
 ## How to Add Environment Variables in Vercel
 
@@ -61,4 +61,4 @@ If you're getting a 404 error:
   - Also verify redirect URLs include your production callback URL
 - **404 Error**: Usually means missing environment variables or build failure
 - **Authentication Errors**: Check Supabase redirect URLs are configured correctly
-- **API Errors**: Verify `OPENAI_API_KEY` is set correctly
+- **API Errors**: Verify `GEMINI_API_KEY` is set correctly

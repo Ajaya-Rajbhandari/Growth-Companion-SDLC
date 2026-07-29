@@ -9,6 +9,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from "recharts"
 import { calculateDuration } from "@/components/timesheet/helpers"
 import { getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
+import { useLocalDay } from "@/lib/hooks/use-local-day"
 import { Clock, CheckSquare, Target, Flame, TrendingUp, CalendarRange } from "lucide-react"
 import { AICoachCard } from "@/components/ai-coach-card"
 
@@ -31,17 +32,19 @@ export function AnalyticsView() {
       })),
     )
 
-  // Rolling 30-day window of local date keys (oldest -> newest).
+  // Rolling 30-day window of local date keys (oldest -> newest). Anchored on the
+  // live day key so an open tab's window rolls over at midnight instead of
+  // staying frozen at whatever "today" was when the view mounted.
+  const { dayKey: todayKey } = useLocalDay()
   const dayKeys = useMemo(() => {
     const keys: string[] = []
-    const today = new Date()
     for (let i = WINDOW_DAYS - 1; i >= 0; i--) {
-      const d = new Date(today)
-      d.setDate(today.getDate() - i)
+      const d = parseLocalDateKey(todayKey)
+      d.setDate(d.getDate() - i)
       keys.push(getLocalDateKey(d))
     }
     return keys
-  }, [])
+  }, [todayKey])
   const windowSet = useMemo(() => new Set(dayKeys), [dayKeys])
 
   const windowEntries = useMemo(() => {

@@ -1,6 +1,5 @@
 import type { StateCreator } from "zustand"
 import { supabase } from "../supabase"
-import { getLocalDateKey } from "../utils"
 import { mapTaskFromDb, throwSupabaseError, type DbTask } from "../mappers"
 import { trackEvent } from "../analytics"
 import type { Task } from "../types"
@@ -22,30 +21,7 @@ export const createTasksSlice: StateCreator<
   [],
   TasksSlice
 > = (set, get) => ({
-  tasks: [
-    {
-      id: "1",
-      title: "Review project requirements",
-      completed: false,
-      priority: "high",
-      dueDate: getLocalDateKey(),
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "2",
-      title: "Schedule team meeting",
-      completed: true,
-      priority: "medium",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "3",
-      title: "Update documentation",
-      completed: false,
-      priority: "low",
-      createdAt: new Date().toISOString(),
-    },
-  ],
+  tasks: [],
 
   addTask: async (task) => {
     const { user } = get()

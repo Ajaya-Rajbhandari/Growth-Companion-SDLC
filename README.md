@@ -15,7 +15,7 @@ Personal productivity assistant built with Next.js (App Router) and Supabase, in
 
 ## Tech Stack
 
-Next.js 16 (App Router) · React 19 · TypeScript · Supabase (auth + data) · Zustand · Tailwind CSS + Radix UI · OpenAI · Vitest + Playwright
+Next.js 16 (App Router) · React 19 · TypeScript · Supabase (auth + data) · Zustand · Tailwind CSS + Radix UI · Gemini · Vitest + Playwright
 
 ## Quick Start
 
@@ -48,7 +48,8 @@ Next.js 16 (App Router) · React 19 · TypeScript · Supabase (auth + data) · Z
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
-| `OPENAI_API_KEY` | Optional | AI assistant and task title suggestions (degrade gracefully without it) |
+| `GEMINI_API_KEY` | Optional | AI assistant and task title suggestions (degrade gracefully without it) |
+| `GEMINI_MODEL` | Optional | Gemini model override (defaults to `gemini-2.5-flash`) |
 
 ## Google OAuth Setup
 

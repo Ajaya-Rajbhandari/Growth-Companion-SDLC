@@ -27,7 +27,7 @@ export interface TimesheetSlice {
 
   clockIn: (title?: string, category?: string) => Promise<void>
   clockOut: () => Promise<void>
-  startBreak: (durationMinutes?: number, breakType?: "short" | "lunch" | "custom" | "fixed", title?: string) => void
+  startBreak: (durationMinutes?: number, breakType?: "short" | "lunch" | "custom" | "fixed", title?: string) => Promise<void>
   endBreak: () => Promise<void>
   addBreakTime: (minutes: number) => Promise<void>
   updateEntryNotes: (id: string, notes: string) => Promise<void>
@@ -49,7 +49,7 @@ export interface TimesheetSlice {
   deleteWorkTemplate: (id: string) => Promise<void>
   updateWorkTemplate: (id: string, updates: Partial<WorkTemplate>) => Promise<void>
   getTopTemplates: () => WorkTemplate[]
-  updateCurrentEntryTitle: (title: string) => void // add method to update current task title
+  updateCurrentEntryTitle: (title: string) => Promise<void>
   switchTask: (newTitle: string, category?: string) => Promise<void>
   setOfficeHours: (hours: number) => void
   setGraceMinutes: (minutes: number) => void
@@ -92,6 +92,10 @@ export const createTimesheetSlice: StateCreator<
   clockIn: async (title?: string, category?: string) => {
     const { user } = get()
     if (!user) return
+    const workTitle = title?.trim()
+    if (!workTitle) {
+      throw new Error("Name the work you are starting before clocking in.")
+    }
     // reset per-day overwork when starting a new session
     set({ overworkMinutesRequested: 0 })
     const { currentEntry, timeEntries, officeHours, graceMinutes, overworkMinutesRequested, allowOverworkMinutes } = get()
@@ -148,7 +152,7 @@ export const createTimesheetSlice: StateCreator<
       clock_in: now.toISOString(),
       break_minutes: 0,
       breaks: [] as BreakPeriod[],
-      title: title || null,
+      title: workTitle,
       category: category || null,
     }
 
@@ -168,7 +172,7 @@ export const createTimesheetSlice: StateCreator<
         currentEntry: newEntry,
         timeEntries: [newEntry, ...state.timeEntries],
       }))
-      trackEvent("clock_in", user.id, { hasTitle: !!title, hasCategory: !!category })
+      trackEvent("clock_in", user.id, { hasTitle: true, hasCategory: !!category })
     }
   },
   clockOut: async () => {
@@ -181,11 +185,14 @@ export const createTimesheetSlice: StateCreator<
         const endTime = new Date()
         const startTime = new Date(activeBreak.startTime)
         const breakDuration = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60))
-        finalBreaks.push({
+        const completedBreak = {
           ...activeBreak,
           endTime: endTime.toISOString(),
           type: activeBreak.type || "lunch"
-        })
+        }
+        const activeIndex = finalBreaks.findIndex((item) => item.id === activeBreak.id)
+        if (activeIndex >= 0) finalBreaks[activeIndex] = completedBreak
+        else finalBreaks.push(completedBreak)
         totalBreakMinutes += breakDuration
       }
 
@@ -216,19 +223,41 @@ export const createTimesheetSlice: StateCreator<
       })
     }
   },
-  startBreak: (durationMinutes?: number, breakType?: "short" | "lunch" | "custom" | "fixed", title?: string) => {
-    const { currentEntry } = get()
-    if (currentEntry) {
-      const resolvedType = breakType === "fixed" ? "short" : breakType || "custom"
-      const newBreak: BreakPeriod = {
-        id: crypto.randomUUID(),
-        startTime: new Date().toISOString(),
-        durationMinutes,
-        type: resolvedType,
-        title: title?.trim() || undefined,
-      }
-      set({ activeBreak: newBreak })
+  startBreak: async (durationMinutes?: number, breakType?: "short" | "lunch" | "custom" | "fixed", title?: string) => {
+    const { currentEntry, activeBreak } = get()
+    if (!currentEntry) {
+      throw new Error("You must be clocked in to start a break.")
     }
+    if (activeBreak) {
+      throw new Error("A break is already active.")
+    }
+
+    const resolvedType = breakType === "fixed" ? "short" : breakType || "custom"
+    const newBreak: BreakPeriod = {
+      id: crypto.randomUUID(),
+      startTime: new Date().toISOString(),
+      durationMinutes,
+      type: resolvedType,
+      title: title?.trim() || undefined,
+    }
+    const updatedBreaks = [...(currentEntry.breaks || []), newBreak]
+    const { error } = await supabase
+      .from("time_entries")
+      .update({ breaks: updatedBreaks })
+      .eq("id", currentEntry.id)
+
+    if (error) {
+      const errorMessage = error.message || JSON.stringify(error)
+      throw new Error(`Failed to start break: ${errorMessage}`)
+    }
+
+    set((state) => ({
+      activeBreak: newBreak,
+      currentEntry: state.currentEntry ? { ...state.currentEntry, breaks: updatedBreaks } : null,
+      timeEntries: state.timeEntries.map((entry) =>
+        entry.id === currentEntry.id ? { ...entry, breaks: updatedBreaks } : entry
+      ),
+    }))
   },
   endBreak: async () => {
     const { currentEntry, activeBreak, user } = get()
@@ -246,7 +275,11 @@ export const createTimesheetSlice: StateCreator<
     }
 
     const updatedBreakMinutes = (currentEntry.breakMinutes || 0) + breakDuration
-    const updatedBreaks = [...(currentEntry.breaks || []), completedBreak]
+    const existingBreaks = [...(currentEntry.breaks || [])]
+    const activeIndex = existingBreaks.findIndex((item) => item.id === activeBreak.id)
+    if (activeIndex >= 0) existingBreaks[activeIndex] = completedBreak
+    else existingBreaks.push(completedBreak)
+    const updatedBreaks = existingBreaks
 
     // Update the database immediately
     const { data, error } = await supabase
@@ -419,12 +452,12 @@ export const createTimesheetSlice: StateCreator<
       return total
     }, 0)
 
-    // Add current session if working
-    if (state.currentEntry && !state.activeBreak) {
+    // Add the open session, freezing its work duration at the start of an active break.
+    if (state.currentEntry) {
       const start = new Date(state.currentEntry.clockIn).getTime()
-      const now = Date.now()
+      const end = state.activeBreak ? new Date(state.activeBreak.startTime).getTime() : Date.now()
       const breakMs = state.currentEntry.breakMinutes * 60 * 1000
-      const diffMs = Math.max(0, now - start - breakMs)
+      const diffMs = Math.max(0, end - start - breakMs)
       todayHours += diffMs / (1000 * 60 * 60)
     }
 
@@ -446,20 +479,20 @@ export const createTimesheetSlice: StateCreator<
       return total
     }, 0)
 
-    if (state.currentEntry && !state.activeBreak) {
+    if (state.currentEntry) {
       const start = new Date(state.currentEntry.clockIn).getTime()
-      const now = Date.now()
+      const end = state.activeBreak ? new Date(state.activeBreak.startTime).getTime() : Date.now()
       const breakMs = state.currentEntry.breakMinutes * 60 * 1000
-      const diffMs = Math.max(0, now - start - breakMs)
+      const diffMs = Math.max(0, end - start - breakMs)
       weeklyHours += diffMs / (1000 * 60 * 60)
     }
 
     let elapsedMinutes: number | undefined
     if (state.currentEntry) {
       const start = new Date(state.currentEntry.clockIn).getTime()
-      const now = Date.now()
+      const end = state.activeBreak ? new Date(state.activeBreak.startTime).getTime() : Date.now()
       const breakMs = state.currentEntry.breakMinutes * 60 * 1000
-      elapsedMinutes = Math.floor(Math.max(0, now - start - breakMs) / (1000 * 60))
+      elapsedMinutes = Math.floor(Math.max(0, end - start - breakMs) / (1000 * 60))
     }
 
     return {
@@ -490,11 +523,11 @@ export const createTimesheetSlice: StateCreator<
       return total
     }, 0)
 
-    if (state.currentEntry && !state.activeBreak) {
+    if (state.currentEntry) {
       const start = new Date(state.currentEntry.clockIn).getTime()
-      const now = Date.now()
+      const end = state.activeBreak ? new Date(state.activeBreak.startTime).getTime() : Date.now()
       const breakMs = state.currentEntry.breakMinutes * 60 * 1000
-      const diffMs = Math.max(0, now - start - breakMs)
+      const diffMs = Math.max(0, end - start - breakMs)
       todayMinutes += diffMs / (1000 * 60)
     }
 
@@ -514,11 +547,11 @@ export const createTimesheetSlice: StateCreator<
       }
       return total
     }, 0)
-    if (state.currentEntry && !state.activeBreak && state.currentEntry.date >= weekStartKey) {
+    if (state.currentEntry && state.currentEntry.date >= weekStartKey) {
       const start = new Date(state.currentEntry.clockIn).getTime()
-      const now = Date.now()
+      const end = state.activeBreak ? new Date(state.activeBreak.startTime).getTime() : Date.now()
       const breakMs = state.currentEntry.breakMinutes * 60 * 1000
-      const diffMs = Math.max(0, now - start - breakMs)
+      const diffMs = Math.max(0, end - start - breakMs)
       weeklyMinutes += diffMs / (1000 * 60)
     }
 
@@ -556,11 +589,11 @@ export const createTimesheetSlice: StateCreator<
         }
         return total
       }, 0)
-      if (state.currentEntry && state.currentEntry.date === dateKey && !state.activeBreak) {
+      if (state.currentEntry && state.currentEntry.date === dateKey) {
         const start = new Date(state.currentEntry.clockIn).getTime()
-        const now = Date.now()
+        const end = state.activeBreak ? new Date(state.activeBreak.startTime).getTime() : Date.now()
         const breakMs = state.currentEntry.breakMinutes * 60 * 1000
-        const diffMs = Math.max(0, now - start - breakMs)
+        const diffMs = Math.max(0, end - start - breakMs)
         minutes += diffMs / (1000 * 60)
       }
       const deficit = Math.max(0, baseLimitMinutes - minutes)
@@ -645,18 +678,28 @@ export const createTimesheetSlice: StateCreator<
     return [...state.workTemplates].sort((a, b) => b.usageCount - a.usageCount).slice(0, 5)
   },
 
-  updateCurrentEntryTitle: (title: string) => {
-    set((state) => {
-      if (state.currentEntry) {
-        return {
-          currentEntry: {
-            ...state.currentEntry,
-            title,
-          },
-        }
-      }
-      return state
-    })
+  updateCurrentEntryTitle: async (title: string) => {
+    const currentEntry = get().currentEntry
+    const trimmedTitle = title.trim()
+    if (!currentEntry) throw new Error("No active task to update.")
+    if (!trimmedTitle) throw new Error("Task title is required.")
+
+    const { error } = await supabase
+      .from("time_entries")
+      .update({ title: trimmedTitle })
+      .eq("id", currentEntry.id)
+
+    if (error) {
+      const errorMessage = error.message || JSON.stringify(error)
+      throw new Error(`Failed to update task: ${errorMessage}`)
+    }
+
+    set((state) => ({
+      currentEntry: state.currentEntry ? { ...state.currentEntry, title: trimmedTitle } : null,
+      timeEntries: state.timeEntries.map((entry) =>
+        entry.id === currentEntry.id ? { ...entry, title: trimmedTitle } : entry
+      ),
+    }))
   },
 
   switchTask: async (newTitle: string, category?: string) => {

@@ -79,7 +79,7 @@ Run through these sections in order with the browser console and network tab ope
 
 ### Prerequisites
 
-- Environment variables set (`.env.local`), dependencies installed, Supabase project configured (with Google OAuth if used), `OPENAI_API_KEY` set for AI features.
+- Environment variables set (`.env.local`), dependencies installed, Supabase project configured (with Google OAuth if used), `GEMINI_API_KEY` set for AI features.
 - Application running, user logged in.
 
 ### 1. Dashboard

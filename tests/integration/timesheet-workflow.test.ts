@@ -26,6 +26,18 @@ vi.mock("@/lib/supabase", () => ({
   },
 }))
 
+// startBreak now persists the new break onto the time entry before it becomes
+// active, so any per-test `from()` override used around a break needs an update
+// chain in addition to insert.
+const mockOkUpdate = () =>
+  vi.fn(() => ({
+    eq: vi.fn(() => ({
+      select: vi.fn(() => ({
+        single: vi.fn(() => ({ data: null, error: null })),
+      })),
+    })),
+  }))
+
 describe("Timesheet Workflow Integration Tests", () => {
   beforeEach(() => {
     useAppStore.setState({
@@ -63,7 +75,7 @@ describe("Timesheet Workflow Integration Tests", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Initial Task")
 
@@ -99,7 +111,7 @@ describe("Timesheet Workflow Integration Tests", () => {
       await switchTask("Second Task")
 
       // Start break
-      startBreak(15, "short", "Coffee break")
+      await startBreak(15, "short", "Coffee break")
 
       // End break
       entryData = {
@@ -181,7 +193,7 @@ describe("Timesheet Workflow Integration Tests", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Task 1")
 
@@ -286,12 +298,12 @@ describe("Timesheet Workflow Integration Tests", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Test Task")
 
       // First break
-      startBreak(15, "short", "Coffee break")
+      await startBreak(15, "short", "Coffee break")
       
       entryData = {
         ...entryData,
@@ -365,7 +377,7 @@ describe("Timesheet Workflow Integration Tests", () => {
       await endBreak()
 
       // Second break
-      startBreak(60, "lunch", "Lunch break")
+      await startBreak(60, "lunch", "Lunch break")
       await endBreak()
 
       const { currentEntry } = useAppStore.getState()

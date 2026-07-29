@@ -15,7 +15,7 @@ Rate limiting is a per-user sliding window implemented in `lib/server/rate-limit
 
 ## POST `/api/assistant`
 
-Streams AI assistant responses with tool calling. Backed by OpenAI (`gpt-4o`, temperature 0.3, streaming). Max duration 30s.
+Streams AI assistant responses with tool calling. Backed by Gemini (`gemini-2.5-flash`, temperature 0.3, streaming). Max duration 30s.
 
 **Auth:** authenticated Supabase session cookie required; returns `401 { "error": "Unauthorized" }` otherwise.
 **Rate limit:** 20 requests/min per user (`429` when exceeded).
@@ -38,8 +38,9 @@ Streams AI assistant responses with tool calling. Backed by OpenAI (`gpt-4o`, te
 }
 ```
 
-- `messages` (required): non-empty array of chat messages (`role`: `user` | `assistant`). Invalid format returns `400`.
-- `appState` (optional): client-side store snapshot the server uses to execute tools (the server does not re-read the database for tool execution). `todayKey` (`YYYY-MM-DD`) pins "today" to the client's timezone.
+- `messages` (required): 1–40 chat messages (`role`: `user` | `assistant`), with a maximum of 4,000 characters per message.
+- `appState` (optional): bounded client-side store snapshot the server uses to execute tools (the server does not re-read the database for tool execution). `todayKey` (`YYYY-MM-DD`) pins "today" to the client's timezone.
+- Request bodies are limited to 1 MB. Oversized requests return `413`.
 
 ### Response
 
@@ -63,17 +64,18 @@ The route also loads recent `chat_feedback` and `ai_usage_analytics` rows for th
 
 ### Error responses
 
-- `400` — invalid `messages`
+- `400` — invalid messages, state, or JSON
+- `413` — request body too large
 - `401` — not authenticated
 - `429` — rate limited (with `Retry-After`)
 - `500` — Supabase env vars missing or unexpected error
-- `503` — `OPENAI_API_KEY` not configured
+- `503` — `GEMINI_API_KEY` not configured
 
 ---
 
 ## POST `/api/suggest-task-titles`
 
-Returns 3–5 short, professional task title suggestions for the timesheet (OpenAI `gpt-4o-mini`). Max duration 15s.
+Returns 3–5 short, professional task title suggestions for the timesheet (Gemini `gemini-2.5-flash`). Max duration 15s.
 
 **Auth:** authenticated session required (`401` otherwise).
 **Rate limit:** 20 requests/min per user (`429` with `Retry-After` when exceeded).
@@ -89,6 +91,7 @@ Returns 3–5 short, professional task title suggestions for the timesheet (Open
 ```
 
 All fields optional: `draft` (string the user is typing), `recentTitles` (up to 20 strings), `currentTask` (task being ended).
+Requests are limited to 32 KB; `draft` is limited to 200 characters and each title to 100 characters.
 
 ### Response
 
@@ -97,8 +100,8 @@ All fields optional: `draft` (string the user is typing), `recentTitles` (up to 
 ```
 
 - Always returns a `suggestions: string[]` array (each ≤100 chars, max 5 items).
-- If `OPENAI_API_KEY` is not configured, returns `200` with `{ "suggestions": [], "error": "OPENAI_API_KEY not configured" }` so the UI degrades gracefully.
-- `502` with empty suggestions on upstream OpenAI errors; `500` on unexpected failures.
+- If `GEMINI_API_KEY` is not configured, returns `200` with `{ "suggestions": [], "error": "GEMINI_API_KEY not configured" }` so the UI degrades gracefully.
+- `502` with empty suggestions on upstream Gemini errors; `500` on unexpected failures.
 
 ---
 

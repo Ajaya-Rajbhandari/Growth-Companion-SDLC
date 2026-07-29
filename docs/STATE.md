@@ -13,7 +13,14 @@ for tasks, notes, timesheet entries, chat sessions, and auth-related UI state.
 - Server-backed state: tasks, notes, time entries, templates, chat sessions.
 - UI-only state: active view, chat panel open state, onboarding progress.
 
+Only the account-neutral `activeView` preference is persisted to localStorage.
+Authenticated user records are reloaded from Supabase after every session
+initialization and are fully cleared on sign-out or session loss.
+
+Initial hydration exposes `initialDataStatus`, `initialDataError`, and
+`initialDataLoaded`. Partial Supabase failures are shown to the user with a
+retry action instead of being silently treated as empty collections.
+
 ## Access Pattern
 Components should prefer `useAppStore(selector)` with shallow comparison to avoid
 re-rendering on unrelated state changes.
-

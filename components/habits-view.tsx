@@ -21,8 +21,9 @@ import {
   Calendar as CalendarIcon,
   TrendingUp
 } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { format, parseISO, startOfDay, subDays, eachDayOfInterval, isSameDay } from "date-fns"
+import { cn, parseLocalDateKey } from "@/lib/utils"
+import { useLocalDay } from "@/lib/hooks/use-local-day"
+import { format, parseISO, subDays, eachDayOfInterval, isSameDay } from "date-fns"
 import { toast } from "@/components/ui/use-toast"
 import type { Habit } from "@/lib/store"
 
@@ -57,6 +58,10 @@ export function HabitsView() {
   const [newHabitColor, setNewHabitColor] = useState("#3b82f6")
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null)
   const [selectedDate, setSelectedDate] = useState(new Date())
+
+  // Live local day, so "today" here rolls over without a reload.
+  const { dayKey: todayKey } = useLocalDay()
+  const todayDate = useMemo(() => parseLocalDateKey(todayKey), [todayKey])
 
   const handleAddHabit = async () => {
     if (!newHabitTitle.trim()) {
@@ -114,12 +119,13 @@ export function HabitsView() {
     }
   }
 
-  // Get last 30 days for heatmap
+  // Get last 30 days for heatmap. Anchored on the live day key so the heatmap
+  // gains a new column at midnight rather than freezing at its mount date.
   const last30Days = useMemo(() => {
-    const today = startOfDay(new Date())
+    const today = parseLocalDateKey(todayKey)
     const start = subDays(today, 29)
     return eachDayOfInterval({ start, end: today })
-  }, [])
+  }, [todayKey])
 
   const getLogForDate = (habitId: string, date: Date): number => {
     const dateStr = format(date, "yyyy-MM-dd")
@@ -287,8 +293,7 @@ export function HabitsView() {
           {habits.map((habit) => {
             const stats = getHabitStats(habit.id)
             const streak = getHabitStreak(habit.id)
-            const todayLog = getLogForDate(habit.id, new Date())
-            const todayStr = format(new Date(), "yyyy-MM-dd")
+            const todayLog = getLogForDate(habit.id, todayDate)
 
             return (
               <Card key={habit.id} className="relative">
@@ -378,11 +383,11 @@ export function HabitsView() {
 
                   {/* Today's Check-in */}
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Today ({format(new Date(), "MMM d")})</Label>
+                    <Label className="text-sm font-medium">Today ({format(todayDate, "MMM d")})</Label>
                     <div className="flex items-center gap-2">
                       <Button
                         variant={todayLog >= habit.targetCount ? "default" : "outline"}
-                        onClick={() => handleLogHabit(habit.id, new Date(), 1)}
+                        onClick={() => handleLogHabit(habit.id, todayDate, 1)}
                         className="flex-1"
                         style={{
                           backgroundColor: todayLog >= habit.targetCount ? habit.color : undefined,
@@ -408,7 +413,7 @@ export function HabitsView() {
                       {last30Days.map((date) => {
                         const count = getLogForDate(habit.id, date)
                         const intensity = getHeatmapIntensity(count, habit.targetCount)
-                        const isToday = isSameDay(date, new Date())
+                        const isToday = isSameDay(date, todayDate)
 
                         return (
                           <div
