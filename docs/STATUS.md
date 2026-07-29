@@ -38,7 +38,7 @@ Run `npm run check` (typecheck, lint, unit/integration tests, build, diff whites
 - All API routes require authentication; AI endpoints (`/api/assistant`, `/api/suggest-task-titles`) are rate-limited to 20 requests/min per user.
 - Test data seeding (`/api/seed-test-data`) is development-only (404 in production).
 - Supabase RLS enabled on all tables; user data isolated per account.
-- Secrets via environment variables only; `.env*` files gitignored. Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`; optional: `OPENAI_API_KEY` (assistant and title suggestions degrade gracefully without it).
+- Secrets via environment variables only; `.env*` files gitignored. Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`; optional: `GEMINI_API_KEY` (assistant and title suggestions degrade gracefully without it).
 - Zustand persisted state is versioned to survive schema changes across releases.
 
 ## Database

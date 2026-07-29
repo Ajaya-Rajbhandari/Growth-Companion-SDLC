@@ -3,6 +3,8 @@ import { cookies } from "next/headers"
 import { getLocalDateKey } from "@/lib/utils"
 import { checkRateLimit, rateLimitResponse } from "@/lib/server/rate-limit"
 import { AssistantRequestSchema } from "@/lib/server/schemas"
+import { fetchGemini, toGeminiContents } from "@/lib/server/gemini"
+import { readJsonBody } from "@/lib/server/request"
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -79,7 +81,7 @@ IMPORTANT NAVIGATION TIPS:
 - The AI assistant can help with tasks, notes, timesheet, goals, habits, and calendar management directly
 
 IMPORTANT TIMESHEET RULES:
-- When user says "clock in", "start work", "begin my day", etc. - use clockIn tool
+- When user says "clock in", "start work", or "begin my day" without naming the work, ask what they are starting. Use clockIn only after a task description is available.
 - When user says "clock out", "end work", "finish my day", "going home", etc. - use clockOut tool  
 - When user says "switch task", "change task", "work on [task]", "switch to [task]" while already clocked in - use switchTask tool (DO NOT clock out!)
 - When user wants to update the current task title/description while clocked in - use switchTask tool
@@ -208,13 +210,13 @@ const tools = [
     type: "function" as const,
     function: {
       name: "clockIn",
-      description: "Clock in to start tracking work time. Use when user wants to start working or begin their day.",
+      description: "Clock in to start tracking named work. A task description is required.",
       parameters: {
         type: "object",
         properties: {
-          taskDescription: { type: "string", description: "Optional description of the task being worked on" },
+          taskDescription: { type: "string", description: "The specific task or activity being started" },
         },
-        required: [],
+        required: ["taskDescription"],
       },
     },
   },
@@ -618,11 +620,12 @@ function executeTool(
 
       case "clockIn": {
         const { taskDescription } = toolInput as { taskDescription?: string }
+        if (!taskDescription?.trim()) {
+          return { message: "Name the work you are starting before clocking in." }
+        }
         return {
-          message: taskDescription
-            ? `Clocked in for "${taskDescription}". Your work session has started.`
-            : "Clocked in successfully. Your work session has started.",
-          action: { type: "clockIn", payload: { taskDescription } },
+          message: `Clocked in for "${taskDescription.trim()}". Your work session has started.`,
+          action: { type: "clockIn", payload: { taskDescription: taskDescription.trim() } },
         }
       }
 
@@ -1130,7 +1133,7 @@ function executeTool(
         return { message: `Unknown tool: ${toolName}` }
     }
   } catch (error) {
-    console.error("[v0] Tool error:", error)
+    console.error("[assistant] Tool error:", error)
     return { message: `Error executing tool: ${String(error)}` }
   }
 }
@@ -1171,8 +1174,14 @@ export async function POST(request: Request) {
       })
     }
 
-    const body = await request.json()
-    const parsed = AssistantRequestSchema.safeParse(body)
+    const body = await readJsonBody(request, 1_000_000)
+    if (!body.ok) {
+      return new Response(JSON.stringify({ error: body.error }), {
+        status: body.status,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+    const parsed = AssistantRequestSchema.safeParse(body.data)
     if (!parsed.success) {
       return new Response(JSON.stringify({ error: "Invalid request body", details: parsed.error.errors }), {
         status: 400,
@@ -1187,9 +1196,6 @@ export async function POST(request: Request) {
     if (!rate.allowed) {
       return rateLimitResponse(rate)
     }
-
-    console.log("[v0] Processing request with app state:", !!appState)
-    console.log("[v0] Messages count:", messages.length)
 
     // Load user preferences and patterns from feedback (LEARNING CAPABILITY)
     let userPreferences = ""
@@ -1243,37 +1249,43 @@ export async function POST(request: Request) {
         }
       }
     } catch (error) {
-      console.error("[v0] Error loading user preferences:", error)
+      console.error("[assistant] Error loading user preferences:", error)
       // Continue without preferences if there's an error
     }
 
     const enhancedSystemPrompt = systemPrompt + userPreferences
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "OpenAI API key is not configured. Please set OPENAI_API_KEY in .env.local." }),
+        JSON.stringify({ error: "Gemini API key is not configured. Please set GEMINI_API_KEY in .env.local." }),
         { status: 503, headers: { "Content-Type": "application/json" } }
       )
     }
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetchGemini("streamGenerateContent", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
       body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [{ role: "system", content: enhancedSystemPrompt }, ...messages],
-        tools,
-        temperature: 0.3, // Lower temperature for more focused, deterministic responses
-        stream: true,
+        systemInstruction: { parts: [{ text: enhancedSystemPrompt }] },
+        contents: toGeminiContents(messages),
+        tools: [
+          {
+            functionDeclarations: tools.map((tool) => ({
+              name: tool.function.name,
+              description: tool.function.description,
+              parameters: tool.function.parameters,
+            })),
+          },
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 2048,
+        },
       }),
-    })
+    }, 28_000)
 
     if (!response.ok) {
       const error = await response.text()
-      console.error("[v0] OpenAI API Error:", error)
+      console.error("[assistant] Gemini API error:", error)
       return new Response(JSON.stringify({ error }), { status: response.status })
     }
 
@@ -1310,9 +1322,27 @@ export async function POST(request: Request) {
 
               try {
                 const json = JSON.parse(data)
-                const chunk = json.choices?.[0]?.delta
+                const parts = json.candidates?.[0]?.content?.parts || []
+                const text = parts
+                  .map((part: { text?: string }) => part.text || "")
+                  .join("")
+                const functionCalls = parts
+                  .map((part: { functionCall?: { name?: string; args?: unknown } }) => part.functionCall)
+                  .filter(Boolean)
+                const chunk = {
+                  content: text,
+                  tool_calls: functionCalls.map(
+                    (functionCall: { name?: string; args?: unknown }, index: number) => ({
+                      index,
+                      function: {
+                        name: functionCall.name,
+                        arguments: JSON.stringify(functionCall.args || {}),
+                      },
+                    }),
+                  ),
+                }
 
-                if (!chunk) continue
+                if (!chunk.content && chunk.tool_calls.length === 0) continue
 
                 // Handle text content
                 if (chunk.content) {
@@ -1336,7 +1366,6 @@ export async function POST(request: Request) {
                     // Accumulate function name (comes in first chunk)
                     if (toolCall.function?.name) {
                       toolCallAccumulator[toolId].name = toolCall.function.name
-                      console.log("[v0] Tool call name received:", toolCall.function.name)
                     }
 
                     // Accumulate function arguments (comes in subsequent chunks)
@@ -1348,7 +1377,6 @@ export async function POST(request: Request) {
                     const accumulated = toolCallAccumulator[toolId]
                     if (accumulated.name && accumulated.arguments && accumulated.arguments.trim().endsWith("}")) {
                       try {
-                        console.log("[v0] Executing tool:", accumulated.name, "with args:", accumulated.arguments)
                         const parsedArgs = JSON.parse(accumulated.arguments)
                         const startTime = Date.now()
                         const toolResult = executeTool(accumulated.name, parsedArgs || {}, appState)
@@ -1365,7 +1393,7 @@ export async function POST(request: Request) {
                               error_message: toolResult.message.includes("Error") ? toolResult.message : null,
                             })
                           } catch (err) {
-                            console.error("[v0] Failed to track tool usage:", err)
+                            console.error("[assistant] Failed to track tool usage:", err)
                           }
                         })()
 
@@ -1425,13 +1453,13 @@ export async function POST(request: Request) {
                         // Clear the accumulator for this tool
                         delete toolCallAccumulator[toolId]
                       } catch (parseError) {
-                        console.error("[v0] Failed to parse tool arguments:", parseError)
+                        console.error("[assistant] Failed to parse tool arguments:", parseError)
                       }
                     }
                   }
                 }
               } catch (e) {
-                console.error("[v0] Parse error:", e)
+                console.error("[assistant] Parse error:", e)
               }
             }
           }
@@ -1457,7 +1485,7 @@ export async function POST(request: Request) {
                       error_message: toolResult.message.includes("Error") ? toolResult.message : null,
                     })
                   } catch (err) {
-                    console.error("[v0] Failed to track tool usage:", err)
+                    console.error("[assistant] Failed to track tool usage:", err)
                   }
                 })()
 
@@ -1476,7 +1504,6 @@ export async function POST(request: Request) {
                   )
                 }
               } catch (e) {
-                console.log("[v0] Skipping incomplete tool call:", accumulated.name)
               }
             }
           }
@@ -1490,13 +1517,11 @@ export async function POST(request: Request) {
           // This can happen if the tool result wasn't properly included in the content
           // In that case, we should still provide a helpful response based on the tool result
           if (hasToolResults && hasNoTextContent) {
-            console.log("[v0] Tool executed but no AI text response - providing fallback based on tool result")
             // The tool result should have been included in content above, but if not, provide a basic response
             // This shouldn't normally happen, but it's a safety net
           }
           
           if (!hasContent || (!hasToolResults && hasNoTextContent)) {
-            console.log("[v0] No content received, sending context-aware response")
             // Generate a more helpful response based on app state
             const tasks = (appState?.tasks as unknown[]) || []
             const notes = (appState?.notes as unknown[]) || []
@@ -1514,7 +1539,7 @@ export async function POST(request: Request) {
           controller.enqueue(encoder.encode("data: [DONE]\n\n"))
           controller.close()
         } catch (error) {
-          console.error("[v0] Stream error:", error)
+          console.error("[assistant] Stream error:", error)
           const errorMessage = error instanceof Error ? error.message : String(error)
           try {
             controller.enqueue(
@@ -1537,7 +1562,7 @@ export async function POST(request: Request) {
       },
     })
   } catch (error) {
-    console.error("[v0] API error:", error)
+    console.error("[assistant] API error:", error)
     const errorMessage = error instanceof Error 
       ? error.message 
       : typeof error === 'string' 

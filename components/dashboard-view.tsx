@@ -25,12 +25,17 @@ import {
   CalendarDays,
   Timer,
   Bell,
+  ClipboardList,
+  Pencil,
 } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis, ReferenceLine } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { cn, getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
+import { cn, getLocalDateKey, parseLocalDateKey, summarizeHabitProgress } from "@/lib/utils"
+import { useLocalDay } from "@/lib/hooks/use-local-day"
 import { format, isToday, isTomorrow, parseISO, differenceInDays } from "date-fns"
-import { BreakDialog, type BreakType } from "@/components/timesheet/dialogs"
+import { BreakDialog, EditTaskDialog, type BreakType } from "@/components/timesheet/dialogs"
+import { ClockInDialog } from "@/components/timesheet/clock-in-dialog"
+import { SwitchTaskDialog } from "@/components/timesheet/switch-task-dialog"
 import { toast } from "@/components/ui/use-toast"
 
 function formatMinutes(totalMinutes: number): string {
@@ -65,13 +70,11 @@ export function DashboardView() {
     goals,
     habits,
     habitLogs,
-    clockIn,
     clockOut,
     endBreak,
     setActiveView,
     officeHours,
     graceMinutes,
-    allowOverworkMinutes,
     overworkMinutesRequested,
     getTodayWorkStats,
   } = useAppStore(
@@ -87,13 +90,11 @@ export function DashboardView() {
       goals: state.goals,
       habits: state.habits,
       habitLogs: state.habitLogs,
-      clockIn: state.clockIn,
       clockOut: state.clockOut,
       endBreak: state.endBreak,
       setActiveView: state.setActiveView,
       officeHours: state.officeHours,
       graceMinutes: state.graceMinutes,
-      allowOverworkMinutes: state.allowOverworkMinutes,
       overworkMinutesRequested: state.overworkMinutesRequested,
       getTodayWorkStats: state.getTodayWorkStats,
     })),
@@ -112,6 +113,9 @@ export function DashboardView() {
   // Without this ticking value, Date.now() inside memoized calculations only updates
   // when another state change happens, so the dashboard can look stale after clock-in.
   const [breakDialogOpen, setBreakDialogOpen] = useState(false)
+  const [clockInDialogOpen, setClockInDialogOpen] = useState(false)
+  const [editTaskDialogOpen, setEditTaskDialogOpen] = useState(false)
+  const [switchTaskDialogOpen, setSwitchTaskDialogOpen] = useState(false)
   const [breakType, setBreakType] = useState<BreakType>("custom")
   const [nowMs, setNowMs] = useState(() => Date.now())
   useEffect(() => {
@@ -125,8 +129,12 @@ export function DashboardView() {
   const pendingTasks = useMemo(() => tasks.filter((t) => !t.completed).length, [tasks])
   const highPriorityTasks = useMemo(() => tasks.filter((t) => t.priority === "high" && !t.completed), [tasks])
   
+  // Roll "today" and the greeting over live. Without this, a tab left open across
+  // midnight (or across noon/5pm) keeps filtering on yesterday's date key and keeps
+  // showing a stale greeting until the page is reloaded.
+  const { dayKey: todayStr, hour: hourOfDay } = useLocalDay()
+
   // Overdue and upcoming tasks
-  const todayStr = useMemo(() => getLocalDateKey(), [])
   const overdueTasks = useMemo(() => 
     tasks.filter((t) => !t.completed && t.dueDate && t.dueDate < todayStr),
     [tasks, todayStr]
@@ -159,26 +167,30 @@ export function DashboardView() {
     let hours = todayHours
     if (currentEntry && currentEntry.date === todayStr && !currentEntry.clockOut) {
       const start = new Date(currentEntry.clockIn).getTime()
+      const end = activeBreak ? new Date(activeBreak.startTime).getTime() : nowMs
       const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
-      const diffMs = Math.max(0, nowMs - start - breakMs)
+      const diffMs = Math.max(0, end - start - breakMs)
       const currentSessionHours = diffMs / (1000 * 60 * 60)
       hours += currentSessionHours
     }
     return hours
-  }, [todayHours, currentEntry, todayStr, nowMs])
+  }, [todayHours, currentEntry, todayStr, activeBreak, nowMs])
 
   // Live elapsed time for the open session (excludes break minutes), ticking via nowMs.
+  // While a break is active the clock is frozen at the break's start time — work time
+  // is paused, so the visible timer must not keep counting.
   const currentSessionElapsed = useMemo(() => {
     if (!currentEntry || currentEntry.clockOut) return ""
     const start = new Date(currentEntry.clockIn).getTime()
+    const end = activeBreak ? new Date(activeBreak.startTime).getTime() : nowMs
     const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
-    const totalSeconds = Math.floor(Math.max(0, nowMs - start - breakMs) / 1000)
+    const totalSeconds = Math.floor(Math.max(0, end - start - breakMs) / 1000)
     const pad = (n: number) => String(n).padStart(2, "0")
     const h = Math.floor(totalSeconds / 3600)
     const m = Math.floor((totalSeconds % 3600) / 60)
     const s = totalSeconds % 60
     return `${pad(h)}:${pad(m)}:${pad(s)}`
-  }, [currentEntry, nowMs])
+  }, [currentEntry, activeBreak, nowMs])
 
   // Live elapsed time for the CURRENT task only (since the last task switch), ticking via nowMs.
   // Null until you've switched at least once — before that, the session timer already covers it.
@@ -222,10 +234,9 @@ export function DashboardView() {
 
   // Calculate weekly stats
   const { weekEntries, weeklyHours } = useMemo(() => {
-    const start = new Date()
-    const dayOfWeek = start.getDay()
-    start.setDate(start.getDate() - dayOfWeek)
-    start.setHours(0, 0, 0, 0)
+    // Anchor on todayStr so the window rolls over with the live day key.
+    const start = parseLocalDateKey(todayStr)
+    start.setDate(start.getDate() - start.getDay())
 
     const entries = timeEntries.filter((e) => {
       return parseLocalDateKey(e.date) >= start
@@ -241,20 +252,21 @@ export function DashboardView() {
 
     if (currentEntry && currentEntry.date >= getLocalDateKey(start) && !currentEntry.clockOut) {
       const sessionStart = new Date(currentEntry.clockIn).getTime()
+      const sessionEnd = activeBreak ? new Date(activeBreak.startTime).getTime() : nowMs
       const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
-      const diffMs = Math.max(0, nowMs - sessionStart - breakMs)
+      const diffMs = Math.max(0, sessionEnd - sessionStart - breakMs)
       hours += diffMs / (1000 * 60 * 60)
     }
 
     return { weekStart: start, weekEntries: entries, weeklyHours: hours }
-  }, [timeEntries, currentEntry, nowMs])
+  }, [timeEntries, currentEntry, activeBreak, nowMs, todayStr])
 
   // Daily breakdown
   const { last7Days, dailyHours } = useMemo(() => {
+    // Anchored on todayStr so the window rolls over with the live day key.
     const days = Array.from({ length: 7 }, (_, i) => {
-      const date = new Date()
+      const date = parseLocalDateKey(todayStr)
       date.setDate(date.getDate() - (6 - i))
-      date.setHours(0, 0, 0, 0)
       return getLocalDateKey(date)
     })
 
@@ -272,8 +284,9 @@ export function DashboardView() {
 
       if (currentEntry && currentEntry.date === date && !currentEntry.clockOut) {
         const start = new Date(currentEntry.clockIn).getTime()
+        const end = activeBreak ? new Date(activeBreak.startTime).getTime() : nowMs
         const breakMs = (currentEntry.breakMinutes || 0) * 60 * 1000
-        const diffMs = Math.max(0, nowMs - start - breakMs)
+        const diffMs = Math.max(0, end - start - breakMs)
         dayHours += diffMs / (1000 * 60 * 60)
       }
 
@@ -281,16 +294,29 @@ export function DashboardView() {
     })
 
     return { last7Days: days, dailyHours: hours }
-  }, [timeEntries, currentEntry, nowMs])
+  }, [timeEntries, currentEntry, activeBreak, nowMs, todayStr])
 
-  const { avgDailyHours, maxDailyHours, dailyChartData } = useMemo(() => {
-    const avg = dailyHours.length > 0 ? (dailyHours.reduce((a, b) => a + b, 0) / dailyHours.length).toFixed(1) : "0"
+  // Stats under the chart summarise the same rolling 7-day window the chart plots,
+  // not the calendar week (which the "This Week" KPI card reports separately).
+  const { avgDailyHours, maxDailyHours, dailyChartData, sevenDayTotalHours, sevenDayRangeLabel } = useMemo(() => {
+    const total = dailyHours.reduce((a, b) => a + b, 0)
+    const avg = dailyHours.length > 0 ? (total / dailyHours.length).toFixed(1) : "0"
     const max = dailyHours.length > 0 ? Math.max(...dailyHours).toFixed(1) : "0"
     const chartData = last7Days.map((date, index) => ({
       dateLabel: parseLocalDateKey(date).toLocaleDateString("en-US", { weekday: "short" }),
       hours: Number(dailyHours[index].toFixed(2)),
     }))
-    return { avgDailyHours: avg, maxDailyHours: max, dailyChartData: chartData }
+    const rangeLabel =
+      last7Days.length > 0
+        ? `${format(parseLocalDateKey(last7Days[0]), "MMM d")} – ${format(parseLocalDateKey(last7Days[last7Days.length - 1]), "MMM d")}`
+        : ""
+    return {
+      avgDailyHours: avg,
+      maxDailyHours: max,
+      dailyChartData: chartData,
+      sevenDayTotalHours: total,
+      sevenDayRangeLabel: rangeLabel,
+    }
   }, [dailyHours, last7Days])
 
   // Goals progress
@@ -301,26 +327,29 @@ export function DashboardView() {
     return Math.round(totalProgress / activeGoals.length)
   }, [activeGoals])
 
-  // Habits today
-  const todayHabits = useMemo(() => {
-    return habits.filter((h) => {
-      const logs = habitLogs.filter((log) => log.habitId === h.id && log.date === todayStr)
-      return logs.length > 0
-    })
-  }, [habits, habitLogs, todayStr])
+  // Habits today. A habit only counts as done once today's logged count reaches its
+  // target — a single "+1" on a habit with targetCount 3 is progress, not completion.
+  const habitProgressToday = useMemo(
+    () => summarizeHabitProgress(habits, habitLogs, todayStr),
+    [habits, habitLogs, todayStr],
+  )
+
+  const completedHabitsToday = useMemo(
+    () => habitProgressToday.filter((h) => h.isCompleted).length,
+    [habitProgressToday],
+  )
 
   const habitsCompletionRate = useMemo(() => {
     if (habits.length === 0) return 0
-    return Math.round((todayHabits.length / habits.length) * 100)
-  }, [habits.length, todayHabits.length])
+    return Math.round((completedHabitsToday / habits.length) * 100)
+  }, [habits.length, completedHabitsToday])
 
-  // Get greeting based on time
+  // Get greeting based on time (hourOfDay ticks, so this rolls over live)
   const greeting = useMemo(() => {
-    const hour = new Date().getHours()
-    if (hour < 12) return "Good morning"
-    if (hour < 17) return "Good afternoon"
+    if (hourOfDay < 12) return "Good morning"
+    if (hourOfDay < 17) return "Good afternoon"
     return "Good evening"
-  }, [])
+  }, [hourOfDay])
 
   // Surface clock/break failures (e.g. "already clocked in today") as a friendly
   // toast instead of an unhandled promise rejection / dev error overlay.
@@ -336,7 +365,7 @@ export function DashboardView() {
 
   const handleQuickAction = (action: string) => {
     if (action === "clock-in") {
-      runTimeAction("clock in", clockIn)
+      setClockInDialogOpen(true)
     } else if (action === "clock-out") {
       runTimeAction("clock out", clockOut)
     } else if (action === "take-break") {
@@ -359,6 +388,13 @@ export function DashboardView() {
         onBreakTypeChange={setBreakType}
         onBeforeStart={() => {}}
       />
+      <ClockInDialog
+        open={clockInDialogOpen}
+        onOpenChange={setClockInDialogOpen}
+        isAtHardCap={workStats.status === "hardCap"}
+      />
+      <EditTaskDialog open={editTaskDialogOpen} onOpenChange={setEditTaskDialogOpen} />
+      <SwitchTaskDialog open={switchTaskDialogOpen} onOpenChange={setSwitchTaskDialogOpen} />
       {/* Header Section */}
       <div className="relative overflow-hidden rounded-3xl border border-border/70 bg-card/80 p-5 sm:p-7 shadow-xl shadow-black/5 backdrop-blur dark:shadow-black/25">
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_right,var(--primary),transparent_26rem)] opacity-20" />
@@ -389,6 +425,9 @@ export function DashboardView() {
                 {currentEntry ? (
                   <span>
                     Active focus session
+                    {currentEntry.title?.trim() && (
+                      <span className="ml-1 text-foreground">· {currentEntry.title}</span>
+                    )}
                     {currentSessionElapsed && (
                       <span className="ml-1.5 tabular-nums font-semibold text-foreground">{currentSessionElapsed}</span>
                     )}
@@ -408,26 +447,50 @@ export function DashboardView() {
 
           {/* Quick Actions */}
           <div className="flex flex-wrap gap-2 lg:justify-end">
-          <Button
-            onClick={() => handleQuickAction("clock-in")}
-            size="sm"
-            variant={currentEntry ? "outline" : "default"}
-            className="min-h-[44px] sm:min-h-0 rounded-xl shadow-sm"
-            disabled={!!currentEntry}
-          >
-            <Play className="size-4 mr-2" />
-            Clock In
-          </Button>
-          <Button
-            onClick={() => handleQuickAction("clock-out")}
-            size="sm"
-            variant="destructive"
-            className="min-h-[44px] sm:min-h-0 rounded-xl"
-            disabled={!currentEntry}
-          >
-            <Square className="size-4 mr-2" />
-            Clock Out
-          </Button>
+          {!currentEntry ? (
+            <Button
+              onClick={() => handleQuickAction("clock-in")}
+              size="sm"
+              className="min-h-[44px] rounded-xl shadow-sm sm:min-h-0"
+              disabled={workStats.status === "hardCap"}
+            >
+              <Play className="mr-2 size-4" />
+              Clock In
+            </Button>
+          ) : (
+            <>
+              {!activeBreak && (
+                <>
+                  <Button
+                    onClick={() => setEditTaskDialogOpen(true)}
+                    size="sm"
+                    variant="outline"
+                    className="min-h-[44px] rounded-xl bg-background/50 sm:min-h-0"
+                  >
+                    <Pencil className="mr-2 size-4" />
+                    Edit Task
+                  </Button>
+                  <Button
+                    onClick={() => setSwitchTaskDialogOpen(true)}
+                    size="sm"
+                    className="min-h-[44px] rounded-xl shadow-sm sm:min-h-0"
+                  >
+                    <ClipboardList className="mr-2 size-4" />
+                    Log new task
+                  </Button>
+                </>
+              )}
+              <Button
+                onClick={() => handleQuickAction("clock-out")}
+                size="sm"
+                variant="destructive"
+                className="min-h-[44px] rounded-xl sm:min-h-0"
+              >
+                <Square className="mr-2 size-4" />
+                Clock Out
+              </Button>
+            </>
+          )}
           {currentEntry && !activeBreak && (
             <Button
               onClick={() => handleQuickAction("take-break")}
@@ -477,9 +540,9 @@ export function DashboardView() {
       </div>
 
       {/* Key Metrics Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <Card className="overflow-hidden border-primary/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/10">
-          <CardContent className="p-4 sm:p-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+        <Card className="h-full overflow-hidden border-primary/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/10">
+          <CardContent className="p-4 sm:p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground mb-1">Today's Hours</p>
@@ -535,50 +598,28 @@ export function DashboardView() {
                     </span>
                   )}
                 </div>
-                {(graceMinutes > 0 || allowOverworkMinutes > 0) && (
-                  <p className="text-[10px] text-muted-foreground mt-1.5">
-                    Limit: {officeHours}h
-                    {graceMinutes > 0 && ` + ${graceMinutes}m grace`}
-                    {overworkMinutesRequested > 0 && ` + ${overworkMinutesRequested}m overwork`}
-                    {allowOverworkMinutes > 0 && (
-                      overworkMinutesRequested === 0 ? (
-                        <Button
-                          variant="link"
-                          className="h-auto p-0 text-[10px] text-muted-foreground underline"
-                          onClick={() => setActiveView("timesheet")}
-                        >
-                          Add overwork in Timesheet
-                        </Button>
-                      ) : null
-                    )}
-                  </p>
-                )}
-                {officeHours > 0 && (
-                  <Button
-                    variant="link"
-                    className="h-auto p-0 text-[10px] text-muted-foreground underline mt-0.5"
-                    onClick={() => setActiveView("profile")}
-                  >
-                    Set daily target & grace in Profile
-                  </Button>
-                )}
+                <p className="mt-1.5 text-[10px] text-muted-foreground">
+                  Daily limit: {officeHours}h
+                  {graceMinutes > 0 && ` + ${graceMinutes}m grace`}
+                  {overworkMinutesRequested > 0 && ` + ${overworkMinutesRequested}m overwork`}
+                </p>
               </>
             )}
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden border-amber-500/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-amber-500/10">
-          <CardContent className="p-4 sm:p-6">
+        <Card className="h-full overflow-hidden border-amber-500/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-amber-500/10">
+          <CardContent className="p-4 sm:p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs sm:text-sm text-muted-foreground mb-1">Weekly catch-up</p>
+                <p className="text-xs sm:text-sm text-muted-foreground mb-1">This Week</p>
                 <p className="text-2xl sm:text-3xl font-bold text-foreground">
-                  {(workStats.weeklyCatchUpMinutes / 60).toFixed(1)}h
+                  {weeklyHours.toFixed(1)}h
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {officeHours > 0
-                    ? `Hours short this week to reach ${officeHours}h/day target`
-                    : "Hours under target this week (set daily target in Profile)"}
+                  {workStats.weeklyCatchUpMinutes > 0
+                    ? `${formatMinutes(workStats.weeklyCatchUpMinutes)} catch-up across elapsed days`
+                    : "On target across elapsed days"}
                 </p>
               </div>
               <div className="size-12 sm:size-14 rounded-2xl bg-amber-500/15 ring-1 ring-amber-500/20 flex items-center justify-center">
@@ -589,8 +630,8 @@ export function DashboardView() {
         </Card>
 
         {isViewEnabled("tasks") && (
-          <Card className="overflow-hidden border-chart-2/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-chart-2/10">
-            <CardContent className="p-4 sm:p-6">
+          <Card className="h-full overflow-hidden border-chart-2/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-chart-2/10">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs sm:text-sm text-muted-foreground mb-1">Pending Tasks</p>
@@ -608,8 +649,8 @@ export function DashboardView() {
         )}
 
         {isViewEnabled("goals") && (
-          <Card className="overflow-hidden border-accent/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-accent/10">
-            <CardContent className="p-4 sm:p-6">
+          <Card className="h-full overflow-hidden border-accent/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-accent/10">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs sm:text-sm text-muted-foreground mb-1">Active Goals</p>
@@ -627,13 +668,13 @@ export function DashboardView() {
         )}
 
         {isViewEnabled("habits") && (
-          <Card className="overflow-hidden border-chart-3/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-chart-3/10">
-            <CardContent className="p-4 sm:p-6">
+          <Card className="h-full overflow-hidden border-chart-3/25 bg-card/80 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-chart-3/10">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs sm:text-sm text-muted-foreground mb-1">Habits Today</p>
                   <p className="text-2xl sm:text-3xl font-bold text-foreground">
-                    {todayHabits.length}/{habits.length}
+                    {completedHabitsToday}/{habits.length}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {habitsCompletionRate}% completed
@@ -751,8 +792,11 @@ export function DashboardView() {
           <CardHeader className="p-4 sm:p-6">
             <CardTitle className="text-base sm:text-lg font-semibold flex items-center gap-2">
               <BarChart3 className="size-4 sm:size-5 text-primary" />
-              Weekly Hours Trend
+              Last 7 Days Trend
             </CardTitle>
+            {sevenDayRangeLabel && (
+              <p className="text-xs text-muted-foreground">{sevenDayRangeLabel}</p>
+            )}
           </CardHeader>
           <CardContent className="p-4 sm:p-6 pt-0">
             <ChartContainer
@@ -811,8 +855,8 @@ export function DashboardView() {
             </ChartContainer>
             <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-border/70">
               <div>
-                <p className="text-xs text-muted-foreground">Total Hours</p>
-                <p className="text-lg font-bold text-foreground">{weeklyHours.toFixed(1)}h</p>
+                <p className="text-xs text-muted-foreground">Total (7 days)</p>
+                <p className="text-lg font-bold text-foreground">{sevenDayTotalHours.toFixed(1)}h</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Avg Daily</p>
@@ -878,7 +922,7 @@ export function DashboardView() {
               : "border-amber-500/40 bg-amber-500/5 shadow-amber-500/10",
           )}>
             <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="size-3 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
                   <div className="min-w-0">
@@ -913,7 +957,7 @@ export function DashboardView() {
         ) : (
           <Card className="border-chart-2/30 bg-card/80 shadow-lg shadow-chart-2/10 backdrop-blur">
             <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="size-3 rounded-full bg-chart-2 animate-pulse flex-shrink-0" />
                   <div className="min-w-0">
@@ -939,7 +983,25 @@ export function DashboardView() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end sm:flex-shrink-0">
+                  <Button
+                    onClick={() => setEditTaskDialogOpen(true)}
+                    size="sm"
+                    variant="outline"
+                    className="min-h-[44px] sm:min-h-0"
+                  >
+                    <Pencil className="size-4 mr-2" />
+                    Edit Task
+                  </Button>
+                  <Button
+                    onClick={() => setSwitchTaskDialogOpen(true)}
+                    size="sm"
+                    variant="default"
+                    className="min-h-[44px] sm:min-h-0"
+                  >
+                    <ClipboardList className="size-4 mr-2" />
+                    Log new task
+                  </Button>
                   <Button
                     onClick={() => handleQuickAction("take-break")}
                     size="sm"
@@ -1028,29 +1090,24 @@ export function DashboardView() {
                 </div>
               </CardHeader>
               <CardContent className="p-4 sm:p-6 pt-0 space-y-3">
-                {habits.slice(0, 3).map((habit) => {
-                  const isCompleted = habitLogs.some(
-                    (log) => log.habitId === habit.id && log.date === todayStr
-                  )
-                  return (
-                    <div key={habit.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {isCompleted ? (
-                          <CheckCircle2 className="size-4 sm:size-5 text-chart-2" />
-                        ) : (
-                          <Circle className="size-4 sm:size-5 text-muted-foreground" />
-                        )}
-                        <span className="text-xs sm:text-sm text-foreground">{habit.title}</span>
-                      </div>
-                      <span className={cn(
-                        "text-xs font-semibold",
-                        isCompleted ? "text-chart-2" : "text-muted-foreground"
-                      )}>
-                        {isCompleted ? "Done" : "Pending"}
-                      </span>
+                {habitProgressToday.slice(0, 3).map(({ habit, count, target, isCompleted }) => (
+                  <div key={habit.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {isCompleted ? (
+                        <CheckCircle2 className="size-4 sm:size-5 text-chart-2" />
+                      ) : (
+                        <Circle className="size-4 sm:size-5 text-muted-foreground" />
+                      )}
+                      <span className="text-xs sm:text-sm text-foreground">{habit.title}</span>
                     </div>
-                  )
-                })}
+                    <span className={cn(
+                      "text-xs font-semibold",
+                      isCompleted ? "text-chart-2" : "text-muted-foreground"
+                    )}>
+                      {isCompleted ? "Done" : target > 1 ? `${count}/${target}` : "Pending"}
+                    </span>
+                  </div>
+                ))}
               </CardContent>
             </Card>
           )}

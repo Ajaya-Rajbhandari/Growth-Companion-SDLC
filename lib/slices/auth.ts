@@ -30,6 +30,9 @@ export interface AuthSlice {
   isLoggedIn: boolean
   authInitialized: boolean
   authError: string
+  initialDataStatus: "idle" | "loading" | "ready" | "error"
+  initialDataError: string
+  initialDataLoaded: boolean
 
   fetchInitialData: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
@@ -52,11 +55,55 @@ export const createAuthSlice: StateCreator<
   isLoggedIn: false,
   authInitialized: false,
   authError: "",
+  initialDataStatus: "idle",
+  initialDataError: "",
+  initialDataLoaded: false,
 
   fetchInitialData: async () => {
     const { user } = get()
     if (!user) return
 
+    set({ initialDataStatus: "loading", initialDataError: "" })
+
+    let results
+    try {
+      results = await Promise.all([
+        supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+        supabase.from("notes").select("*").eq("user_id", user.id).order("updated_at", { ascending: false }),
+        supabase.from("time_entries").select("*").eq("user_id", user.id).order("clock_in", { ascending: false }),
+        supabase.from("work_templates").select("*").eq("user_id", user.id).order("usage_count", { ascending: false }),
+        supabase.from("chat_sessions").select("*").eq("user_id", user.id).order("updated_at", { ascending: false }),
+        supabase.from("time_categories").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+        supabase.from("goals").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+        supabase.from("habits").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+        supabase.from("habit_logs").select("*").eq("user_id", user.id).order("date", { ascending: false }),
+      ])
+    } catch (error) {
+      set({
+        initialDataStatus: "error",
+        initialDataError: error instanceof Error ? error.message : "Could not load your data.",
+        initialDataLoaded: true,
+      })
+      return
+    }
+
+    // A Supabase query normally resolves with { data, error } instead of
+    // rejecting. Surface partial failures rather than silently treating them
+    // as legitimate empty collections.
+    const labels = [
+      "tasks",
+      "notes",
+      "time entries",
+      "work templates",
+      "chat history",
+      "time categories",
+      "goals",
+      "habits",
+      "habit logs",
+    ]
+    const failures = results.flatMap((result, index) =>
+      result.error ? [`${labels[index]}: ${result.error.message}`] : [],
+    )
     const [
       { data: tasks },
       { data: notes },
@@ -66,18 +113,8 @@ export const createAuthSlice: StateCreator<
       { data: timeCategories },
       { data: goals },
       { data: habits },
-      { data: habitLogs }
-    ] = await Promise.all([
-      supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-      supabase.from("notes").select("*").eq("user_id", user.id).order("updated_at", { ascending: false }),
-      supabase.from("time_entries").select("*").eq("user_id", user.id).order("clock_in", { ascending: false }),
-      supabase.from("work_templates").select("*").eq("user_id", user.id).order("usage_count", { ascending: false }),
-      supabase.from("chat_sessions").select("*").eq("user_id", user.id).order("updated_at", { ascending: false }),
-      supabase.from("time_categories").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-      supabase.from("goals").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-      supabase.from("habits").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-      supabase.from("habit_logs").select("*").eq("user_id", user.id).order("date", { ascending: false })
-    ])
+      { data: habitLogs },
+    ] = results
 
     const mappedTasks = (tasks || []).map((task) => mapTaskFromDb(task as DbTask))
     const mappedNotes = (notes || []).map((note) => mapNoteFromDb(note as DbNote))
@@ -89,7 +126,12 @@ export const createAuthSlice: StateCreator<
     const mappedHabits = (habits || []).map((habit) => mapHabitFromDb(habit as DbHabit))
     const mappedHabitLogs = (habitLogs || []).map((log) => mapHabitLogFromDb(log as DbHabitLog))
 
+    // Ignore a stale response if the user signed out or switched accounts while
+    // these parallel requests were in flight.
+    if (get().user?.id !== user.id) return
+
     const currentEntry = mappedTimeEntries.find((entry) => !entry.clockOut)
+    const activeBreak = currentEntry?.breaks?.findLast((item) => !item.endTime) || null
 
     set({
       tasks: mappedTasks,
@@ -102,7 +144,14 @@ export const createAuthSlice: StateCreator<
       habits: mappedHabits,
       habitLogs: mappedHabitLogs,
       currentEntry: currentEntry || null,
-      isLoggedIn: true
+      activeBreak,
+      isLoggedIn: true,
+      initialDataStatus: failures.length > 0 ? "error" : "ready",
+      initialDataError:
+        failures.length > 0
+          ? `Some data could not be loaded (${failures.join("; ")}).`
+          : "",
+      initialDataLoaded: true,
     })
   },
 
@@ -196,14 +245,55 @@ export const createAuthSlice: StateCreator<
       tasks: [],
       notes: [],
       timeEntries: [],
+      workTemplates: [],
+      timeCategories: [],
+      goals: [],
+      habits: [],
+      habitLogs: [],
       chatMessages: [],
       chatSessions: [],
       currentChatSessionId: null,
+      currentEntry: null,
+      activeBreak: null,
+      overworkMinutesRequested: 0,
+      officeHours: 9,
+      graceMinutes: 0,
+      allowOverworkMinutes: 60,
+      initialDataStatus: "idle",
+      initialDataError: "",
+      initialDataLoaded: false,
     })
   },
 
   setUser: (user: User | null) => {
-    set({ user, isLoggedIn: !!user })
+    if (user) {
+      set({ user, isLoggedIn: true })
+      return
+    }
+    set({
+      user: null,
+      isLoggedIn: false,
+      tasks: [],
+      notes: [],
+      timeEntries: [],
+      workTemplates: [],
+      timeCategories: [],
+      goals: [],
+      habits: [],
+      habitLogs: [],
+      chatMessages: [],
+      chatSessions: [],
+      currentChatSessionId: null,
+      currentEntry: null,
+      activeBreak: null,
+      overworkMinutesRequested: 0,
+      officeHours: 9,
+      graceMinutes: 0,
+      allowOverworkMinutes: 60,
+      initialDataStatus: "idle",
+      initialDataError: "",
+      initialDataLoaded: false,
+    })
   },
 
   setAuthInitialized: (ready: boolean) => {
@@ -218,6 +308,9 @@ export const createAuthSlice: StateCreator<
     const metadataUpdates: Record<string, any> = {}
     if (updates.name) {
       metadataUpdates.full_name = updates.name
+    }
+    if (updates.officeHours !== undefined) {
+      metadataUpdates.office_hours = updates.officeHours
     }
     if (updates.graceMinutes !== undefined) {
       metadataUpdates.grace_minutes = updates.graceMinutes

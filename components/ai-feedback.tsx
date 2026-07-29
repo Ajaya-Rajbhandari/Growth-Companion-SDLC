@@ -149,7 +149,7 @@ export function AIFeedback({ messageId, sessionId, className }: AIFeedbackProps)
 
       toast({
         title: "Feedback recorded",
-        description: `Thank you for your ${type} feedback!`,
+        description: `Your ${type} feedback was saved.`,
         duration: 2000,
       })
     } catch (error) {
@@ -179,32 +179,36 @@ export function AIFeedback({ messageId, sessionId, className }: AIFeedbackProps)
   }
 
   return (
-    <div className={cn("flex items-center gap-1 mt-2", className)}>
+    <div className={cn("flex items-center gap-0.5", className)}>
       <Button
+        type="button"
         variant="ghost"
-        size="sm"
+        size="icon"
         className={cn(
-          "h-7 px-2 text-xs",
+          "size-8 rounded-lg",
           feedback === "positive" && "bg-green-500/10 text-green-600 dark:text-green-400"
         )}
         onClick={() => handleFeedback("positive")}
         disabled={isSubmitting}
+        aria-label={feedback === "positive" ? "Remove helpful feedback" : "Mark response as helpful"}
+        title="Helpful"
       >
-        <ThumbsUp className="size-3.5 mr-1" />
-        Helpful
+        <ThumbsUp className="size-3.5" />
       </Button>
       <Button
+        type="button"
         variant="ghost"
-        size="sm"
+        size="icon"
         className={cn(
-          "h-7 px-2 text-xs",
+          "size-8 rounded-lg",
           feedback === "negative" && "bg-red-500/10 text-red-600 dark:text-red-400"
         )}
         onClick={() => handleFeedback("negative")}
         disabled={isSubmitting}
+        aria-label={feedback === "negative" ? "Remove not-helpful feedback" : "Mark response as not helpful"}
+        title="Not helpful"
       >
-        <ThumbsDown className="size-3.5 mr-1" />
-        Not helpful
+        <ThumbsDown className="size-3.5" />
       </Button>
     </div>
   )

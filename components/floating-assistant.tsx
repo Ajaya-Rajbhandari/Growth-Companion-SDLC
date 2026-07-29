@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useRef, useEffect, useState, useCallback } from "react"
-import { useAppStore, type ChatMessage, type Note } from "@/lib/store"
+import { useAppStore, type ChatMessage } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -24,27 +24,14 @@ import {
   Square,
   Coffee,
   BarChart3,
-  AlertCircle,
   History,
   Plus,
   Trash2,
   ArrowLeft,
   Flame,
-  Copy,
-  RotateCw,
 } from "lucide-react"
 import { cn, getLocalDateKey } from "@/lib/utils"
-import { AIMessage } from "@/components/ai-message"
-import { AIFeedback } from "@/components/ai-feedback"
-import { toast } from "@/components/ui/use-toast"
-
-type NoteCategory = NonNullable<Note["category"]>
-
-const NOTE_CATEGORIES: NoteCategory[] = ["work", "personal", "ideas", "meeting", "other"]
-
-function normalizeNoteCategory(category: string | undefined): NoteCategory {
-  return NOTE_CATEGORIES.includes(category as NoteCategory) ? (category as NoteCategory) : "other"
-}
+import { AssistantResponse } from "@/components/assistant-response"
 
 // Generate context-aware suggested prompts
 const getSuggestedPrompts = (
@@ -52,7 +39,6 @@ const getSuggestedPrompts = (
   goals: any[],
   habits: any[],
   currentEntry: any,
-  timeEntries: any[]
 ) => {
   const hour = new Date().getHours()
   const isMorning = hour >= 6 && hour < 12
@@ -173,8 +159,6 @@ export function FloatingAssistant() {
     updateHabit,
     deleteHabit,
     logHabit,
-    getHabitStreak,
-    getHabitStats,
     tasks,
     notes,
     goals,
@@ -186,7 +170,6 @@ export function FloatingAssistant() {
     toggleChat,
     addChatMessage,
     updateLastChatMessage,
-    clearChatHistory,
     clockIn,
     clockOut,
     startBreak,
@@ -194,9 +177,6 @@ export function FloatingAssistant() {
     switchTask,
     currentEntry,
     activeBreak,
-    getTimesheetStatus,
-    getTasksSummary,
-    getNotesSummary,
     createNewChatSession,
     saveCurrentChatSession,
     loadChatSession,
@@ -220,8 +200,6 @@ export function FloatingAssistant() {
       updateHabit: state.updateHabit,
       deleteHabit: state.deleteHabit,
       logHabit: state.logHabit,
-      getHabitStreak: state.getHabitStreak,
-      getHabitStats: state.getHabitStats,
       tasks: state.tasks,
       notes: state.notes,
       goals: state.goals,
@@ -232,7 +210,6 @@ export function FloatingAssistant() {
       toggleChat: state.toggleChat,
       addChatMessage: state.addChatMessage,
       updateLastChatMessage: state.updateLastChatMessage,
-      clearChatHistory: state.clearChatHistory,
       clockIn: state.clockIn,
       clockOut: state.clockOut,
       startBreak: state.startBreak,
@@ -240,9 +217,6 @@ export function FloatingAssistant() {
       switchTask: state.switchTask,
       currentEntry: state.currentEntry,
       activeBreak: state.activeBreak,
-      getTimesheetStatus: state.getTimesheetStatus,
-      getTasksSummary: state.getTasksSummary,
-      getNotesSummary: state.getNotesSummary,
       createNewChatSession: state.createNewChatSession,
       saveCurrentChatSession: state.saveCurrentChatSession,
       loadChatSession: state.loadChatSession,
@@ -269,7 +243,7 @@ export function FloatingAssistant() {
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [])
+  }, [createNewChatSession, currentChatSessionId])
 
   useEffect(() => {
     scrollToBottom()
@@ -400,182 +374,12 @@ export function FloatingAssistant() {
   }, [dragPosition])
 
   useEffect(() => {
-    saveCurrentChatSession()
-  }, [chatMessages])
-
-  const handleToolCalls = useCallback(
-    async (toolCalls: ChatMessage["toolCalls"]) => {
-      if (!toolCalls) return
-
-      const results: Array<{ name: string; result: Record<string, unknown> }> = []
-
-      for (const toolCall of toolCalls) {
-        try {
-          if (toolCall.name === "createTask") {
-            const args = toolCall.arguments as {
-              title: string
-              priority: "low" | "medium" | "high"
-              dueDate?: string
-            }
-            const exists = tasks.some((t) => t.title === args.title)
-            if (!exists) {
-              try {
-                await addTask({ title: args.title, priority: args.priority, dueDate: args.dueDate, completed: false })
-                results.push({ name: "createTask", result: { success: true, title: args.title } })
-              } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error)
-                results.push({ 
-                  name: "createTask", 
-                  result: { success: false, message: errorMessage } 
-                })
-              }
-            } else {
-              results.push({ name: "createTask", result: { success: true, title: args.title, message: "Task already exists" } })
-            }
-          }
-
-          if (toolCall.name === "createNote") {
-            const args = toolCall.arguments as { title?: string; content?: string; category?: string; tags?: string[] }
-            if (!args.title || !args.content) {
-              results.push({ 
-                name: "createNote", 
-                result: { success: false, message: "Missing required fields: title and content are required" } 
-              })
-            } else {
-              const exists = notes.some((n) => n.title === args.title)
-              if (!exists) {
-                try {
-                  await addNote({
-                    title: args.title,
-                    content: args.content,
-                    category: normalizeNoteCategory(args.category),
-                    tags: args.tags || []
-	                  })
-                  results.push({ name: "createNote", result: { success: true, title: args.title } })
-                } catch (error) {
-                  const errorMessage = error instanceof Error ? error.message : String(error)
-                  results.push({ 
-                    name: "createNote", 
-                    result: { success: false, message: errorMessage } 
-                  })
-                }
-              } else {
-                results.push({ name: "createNote", result: { success: true, title: args.title, message: "Note already exists" } })
-              }
-            }
-          }
-
-          if (toolCall.name === "clockIn") {
-            if (currentEntry) {
-              results.push({ name: "clockIn", result: { success: false, message: "Already clocked in" } })
-            } else {
-              await clockIn()
-              results.push({
-                name: "clockIn",
-                result: { success: true, message: "Clocked in successfully", time: new Date().toLocaleTimeString() },
-              })
-            }
-          }
-
-          if (toolCall.name === "clockOut") {
-            if (!currentEntry) {
-              results.push({ name: "clockOut", result: { success: false, message: "Not currently clocked in" } })
-            } else {
-              await clockOut()
-              results.push({
-                name: "clockOut",
-                result: { success: true, message: "Clocked out successfully", time: new Date().toLocaleTimeString() },
-              })
-            }
-          }
-
-          if (toolCall.name === "startBreak") {
-            const args = toolCall.arguments as { durationMinutes?: number; breakType?: "fixed" | "lunch" | "custom" }
-            if (!currentEntry) {
-              results.push({
-                name: "startBreak",
-                result: { success: false, message: "Must be clocked in to take a break" },
-              })
-            } else if (activeBreak) {
-              results.push({ name: "startBreak", result: { success: false, message: "Already on a break" } })
-            } else {
-              startBreak(args.durationMinutes, args.breakType)
-              results.push({
-                name: "startBreak",
-                result: {
-                  success: true,
-                  message: args.durationMinutes
-                    ? `Started ${args.durationMinutes} minute break`
-                    : "Started open-ended break",
-                  duration: args.durationMinutes,
-                },
-              })
-            }
-          }
-
-          if (toolCall.name === "endBreak") {
-            if (!activeBreak) {
-              results.push({ name: "endBreak", result: { success: false, message: "Not currently on a break" } })
-            } else {
-              try {
-                await endBreak()
-                results.push({ name: "endBreak", result: { success: true, message: "Break ended, back to work!" } })
-              } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error)
-                results.push({ name: "endBreak", result: { success: false, message: errorMessage } })
-              }
-            }
-          }
-
-          if (toolCall.name === "getTimesheetStatus") {
-            const status = getTimesheetStatus()
-            results.push({ name: "getTimesheetStatus", result: status })
-          }
-
-          if (toolCall.name === "getAppSummary") {
-            const tasksSummary = getTasksSummary()
-            const notesSummary = getNotesSummary()
-            const timesheetStatus = getTimesheetStatus()
-            results.push({
-              name: "getAppSummary",
-              result: {
-                tasks: tasksSummary,
-                notes: notesSummary,
-                timesheet: timesheetStatus,
-              },
-            })
-          }
-        } catch (error) {
-          console.error(`[v0] Tool error for ${toolCall.name}:`, error)
-          const errorMessage = error instanceof Error 
-            ? error.message 
-            : typeof error === 'string' 
-              ? error 
-              : typeof error === "object" && error !== null && "message" in error
-                ? String(error.message)
-                : JSON.stringify(error)
-          setError(`Error executing ${toolCall.name}: ${errorMessage}`)
-        }
-      }
-
-      return results
-    },
-    [
-      addTask,
-      addNote,
-      tasks,
-      notes,
-      clockIn,
-      clockOut,
-      startBreak,
-      endBreak,
-      currentEntry,
-      activeBreak,
-      getTimesheetStatus,
-      getTasksSummary,
-      getNotesSummary,
-    ],
-  )
+    if (isLoading || chatMessages.length === 0) return
+    const saveTimer = window.setTimeout(() => {
+      void saveCurrentChatSession()
+    }, 500)
+    return () => window.clearTimeout(saveTimer)
+  }, [chatMessages, isLoading, saveCurrentChatSession])
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -608,10 +412,11 @@ export function FloatingAssistant() {
       }
       addChatMessage(assistantMessage)
 
+      let timeoutId: number | undefined
       try {
         const allMessages = [...chatMessages, userMessage]
 
-        const timeoutId = setTimeout(() => {
+        timeoutId = window.setTimeout(() => {
           abortControllerRef.current?.abort()
         }, REQUEST_TIMEOUT_MS)
 
@@ -633,8 +438,6 @@ export function FloatingAssistant() {
           }),
           signal: abortControllerRef.current?.signal,
         })
-
-        clearTimeout(timeoutId)
 
         if (!response.ok) {
           let errorText = ""
@@ -704,7 +507,7 @@ export function FloatingAssistant() {
                 if (data.toolResult && data.toolName) {
                   toolCalls.push({
                     name: data.toolName,
-                    arguments: {},
+                    arguments: data.toolAction?.payload || {},
                     result: data.toolResult,
                   })
                   
@@ -724,7 +527,7 @@ export function FloatingAssistant() {
                       }
                       case "createNote": {
                         if (!payload.title || !payload.content) {
-                          console.error("[v0] Missing required note fields:", payload)
+                          console.error("[assistant] Missing required note fields:", payload)
                           break
                         }
                         const noteExists = notes.some((n) => n.title === payload.title)
@@ -732,7 +535,7 @@ export function FloatingAssistant() {
                           try {
                             await addNote(payload)
                           } catch (error) {
-                            console.error("[v0] Failed to create note:", error)
+                            console.error("[assistant] Failed to create note:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to create note: ${errorMessage}`)
                           }
@@ -751,7 +554,13 @@ export function FloatingAssistant() {
                         break
                       case "startBreak":
                         if (currentEntry && !activeBreak) {
-                          startBreak(payload.durationMinutes, payload.breakType)
+                          try {
+                            await startBreak(payload.durationMinutes, payload.breakType)
+                          } catch (error) {
+                            console.error("[assistant] Failed to start break:", error)
+                            const errorMessage = error instanceof Error ? error.message : String(error)
+                            setError(`Failed to start break: ${errorMessage}`)
+                          }
                         }
                         break
                       case "endBreak":
@@ -759,7 +568,7 @@ export function FloatingAssistant() {
                           try {
                             await endBreak()
                           } catch (error) {
-                            console.error("[v0] Failed to end break:", error)
+                            console.error("[assistant] Failed to end break:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to end break: ${errorMessage}`)
                           }
@@ -770,7 +579,7 @@ export function FloatingAssistant() {
                           try {
                             await switchTask(payload.newTaskTitle)
                           } catch (error) {
-                            console.error("[v0] Failed to switch task:", error)
+                            console.error("[assistant] Failed to switch task:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to switch task: ${errorMessage}`)
                           }
@@ -787,7 +596,7 @@ export function FloatingAssistant() {
                               completed: payload.completed,
                             })
                           } catch (error) {
-                            console.error("[v0] Failed to update task:", error)
+                            console.error("[assistant] Failed to update task:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to update task: ${errorMessage}`)
                           }
@@ -798,7 +607,7 @@ export function FloatingAssistant() {
                           try {
                             await deleteTask(payload.id)
                           } catch (error) {
-                            console.error("[v0] Failed to delete task:", error)
+                            console.error("[assistant] Failed to delete task:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to delete task: ${errorMessage}`)
                           }
@@ -809,7 +618,7 @@ export function FloatingAssistant() {
                           try {
                             await toggleTask(payload.id, true)
                           } catch (error) {
-                            console.error("[v0] Failed to complete task:", error)
+                            console.error("[assistant] Failed to complete task:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to complete task: ${errorMessage}`)
                           }
@@ -825,7 +634,7 @@ export function FloatingAssistant() {
                               tags: payload.tags,
                             })
                           } catch (error) {
-                            console.error("[v0] Failed to update note:", error)
+                            console.error("[assistant] Failed to update note:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to update note: ${errorMessage}`)
                           }
@@ -836,7 +645,7 @@ export function FloatingAssistant() {
                           try {
                             await deleteNote(payload.id)
                           } catch (error) {
-                            console.error("[v0] Failed to delete note:", error)
+                            console.error("[assistant] Failed to delete note:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to delete note: ${errorMessage}`)
                           }
@@ -854,7 +663,7 @@ export function FloatingAssistant() {
                             milestones: [],
                           })
                         } catch (error) {
-                          console.error("[v0] Failed to create goal:", error)
+                          console.error("[assistant] Failed to create goal:", error)
                           const errorMessage = error instanceof Error ? error.message : String(error)
                           setError(`Failed to create goal: ${errorMessage}`)
                         }
@@ -871,7 +680,7 @@ export function FloatingAssistant() {
                               category: payload.category,
                             })
                           } catch (error) {
-                            console.error("[v0] Failed to update goal:", error)
+                            console.error("[assistant] Failed to update goal:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to update goal: ${errorMessage}`)
                           }
@@ -882,7 +691,7 @@ export function FloatingAssistant() {
                           try {
                             await deleteGoal(payload.id)
                           } catch (error) {
-                            console.error("[v0] Failed to delete goal:", error)
+                            console.error("[assistant] Failed to delete goal:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to delete goal: ${errorMessage}`)
                           }
@@ -893,7 +702,7 @@ export function FloatingAssistant() {
                           try {
                             await updateGoalProgress(payload.id, payload.progress)
                           } catch (error) {
-                            console.error("[v0] Failed to update goal progress:", error)
+                            console.error("[assistant] Failed to update goal progress:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to update goal progress: ${errorMessage}`)
                           }
@@ -909,7 +718,7 @@ export function FloatingAssistant() {
                             color: payload.color || "#3b82f6",
                           })
                         } catch (error) {
-                          console.error("[v0] Failed to create habit:", error)
+                          console.error("[assistant] Failed to create habit:", error)
                           const errorMessage = error instanceof Error ? error.message : String(error)
                           setError(`Failed to create habit: ${errorMessage}`)
                         }
@@ -925,7 +734,7 @@ export function FloatingAssistant() {
                               color: payload.color,
                             })
                           } catch (error) {
-                            console.error("[v0] Failed to update habit:", error)
+                            console.error("[assistant] Failed to update habit:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to update habit: ${errorMessage}`)
                           }
@@ -936,7 +745,7 @@ export function FloatingAssistant() {
                           try {
                             await deleteHabit(payload.id)
                           } catch (error) {
-                            console.error("[v0] Failed to delete habit:", error)
+                            console.error("[assistant] Failed to delete habit:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to delete habit: ${errorMessage}`)
                           }
@@ -947,7 +756,7 @@ export function FloatingAssistant() {
                           try {
                             await logHabit(payload.habitId, payload.date || getLocalDateKey(), payload.count)
                           } catch (error) {
-                            console.error("[v0] Failed to log habit:", error)
+                            console.error("[assistant] Failed to log habit:", error)
                             const errorMessage = error instanceof Error ? error.message : String(error)
                             setError(`Failed to log habit: ${errorMessage}`)
                           }
@@ -957,7 +766,7 @@ export function FloatingAssistant() {
                   }
                 }
               } catch (parseError) {
-                console.error("[v0] JSON parse error:", parseError)
+                console.error("[assistant] JSON parse error:", parseError)
               }
             }
           }
@@ -983,11 +792,45 @@ export function FloatingAssistant() {
           updateLastChatMessage({ content: `Error: ${errorMessage}` })
         }
       } finally {
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId)
         setIsLoading(false)
         abortControllerRef.current = null
       }
     },
-    [chatMessages, isLoading, handleToolCalls, addChatMessage, updateLastChatMessage, tasks, notes, currentEntry, timeEntries],
+    [
+      activeBreak,
+      addChatMessage,
+      addGoal,
+      addHabit,
+      addNote,
+      addTask,
+      chatMessages,
+      clockIn,
+      clockOut,
+      currentEntry,
+      deleteGoal,
+      deleteHabit,
+      deleteNote,
+      deleteTask,
+      endBreak,
+      goals,
+      habitLogs,
+      habits,
+      isLoading,
+      logHabit,
+      notes,
+      startBreak,
+      switchTask,
+      tasks,
+      timeEntries,
+      toggleTask,
+      updateGoal,
+      updateGoalProgress,
+      updateHabit,
+      updateLastChatMessage,
+      updateNote,
+      updateTask,
+    ],
   )
 
   const handleSend = () => {
@@ -1204,7 +1047,10 @@ export function FloatingAssistant() {
     return null
   }
 
-  const desktopPanelSize = { width: 420, height: 650 }
+  const desktopPanelSize = {
+    width: Math.min(430, Math.max(320, viewport.width - 32)),
+    height: Math.min(720, Math.max(480, viewport.height - 32)),
+  }
   const panelGap = 16
   const bubbleSize = 56
   const bubblePos = dragPosition || bubblePosition
@@ -1237,7 +1083,7 @@ export function FloatingAssistant() {
           event.stopPropagation()
           try {
             event.currentTarget.setPointerCapture(event.pointerId)
-          } catch (e) {
+          } catch {
             // Pointer capture may fail on some devices, continue anyway
           }
           dragStartRef.current = { x: event.clientX, y: event.clientY }
@@ -1360,22 +1206,27 @@ export function FloatingAssistant() {
       </button>
 
       {isChatOpen && (
-        // Adjusted size and added overflow-hidden for rounded corners
         <div
           className={cn(
-            "fixed w-full md:w-[420px] h-screen md:h-[650px] bg-background rounded-none md:rounded-xl shadow-2xl border-0 md:border border-border flex flex-col z-50 overflow-hidden",
+            "fixed h-[100dvh] w-full bg-background flex flex-col z-50 overflow-hidden",
+            "md:h-[min(720px,calc(100dvh-2rem))] md:w-[min(430px,calc(100vw-2rem))] md:rounded-2xl md:border md:border-border/80",
+            "shadow-2xl shadow-primary/10",
             !isDesktop && "left-0 bottom-0",
             isDesktop && !panelStyle && (dockSide === "left" ? "left-4 bottom-4" : "right-4 bottom-4"),
             "pb-safe",
           )}
           style={panelStyle}
+          role="dialog"
+          aria-modal="true"
+          aria-label="AI assistant"
         >
-          <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-primary/5 to-transparent">
+          <header className="flex items-center justify-between border-b border-border/70 bg-background/95 p-4 backdrop-blur-xl">
             <div className="flex items-center gap-3">
               {showHistory ? (
                 <button
                   onClick={() => setShowHistory(false)}
-                  className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors"
+                  className="inline-flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Back to conversation"
                 >
                   <ArrowLeft className="size-5 text-foreground" />
                 </button>
@@ -1394,15 +1245,17 @@ export function FloatingAssistant() {
                 <>
                   <button
                     onClick={handleNewChat}
-                    className="p-2 rounded-lg hover:bg-secondary/50 transition-colors"
+                    className="inline-flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     title="New Chat (Ctrl+N)"
+                    aria-label="Start new chat"
                   >
                     <Plus className="size-4 text-muted-foreground hover:text-foreground" />
                   </button>
                   <button
                     onClick={() => setShowHistory(true)}
-                    className="p-2 rounded-lg hover:bg-secondary/50 transition-colors"
+                    className="inline-flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     title="Chat History"
+                    aria-label="Open chat history"
                   >
                     <History className="size-4 text-muted-foreground hover:text-foreground" />
                   </button>
@@ -1410,13 +1263,14 @@ export function FloatingAssistant() {
               )}
               <button
                 onClick={toggleChat}
-                className="p-2 rounded-lg hover:bg-secondary/50 transition-colors"
+                className="inline-flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 title="Close"
+                aria-label="Close AI assistant"
               >
                 <X className="size-4 text-muted-foreground hover:text-foreground" />
               </button>
             </div>
-          </div>
+          </header>
 
           {showHistory ? (
             // Chat History Panel
@@ -1483,7 +1337,7 @@ export function FloatingAssistant() {
             // Chat Messages Panel
             <>
               {/* Removed original empty state, now handled within the chatMessages panel */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatContainerRef}>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3" ref={chatContainerRef}>
                 {chatMessages.length === 0 ? (
                   // Empty state for the chat interface
                   <div className="h-full flex flex-col items-center justify-center text-center px-4">
@@ -1495,7 +1349,7 @@ export function FloatingAssistant() {
                       I can help manage your tasks, notes, and timesheet. Try one of these:
                     </p>
                     <div className="grid grid-cols-2 gap-2 w-full max-w-[320px]">
-                      {getSuggestedPrompts(tasks, goals, habits, currentEntry, timeEntries).map((item, index) => (
+                      {getSuggestedPrompts(tasks, goals, habits, currentEntry).map((item, index) => (
                         <button
                           key={index}
                           onClick={() => handleSuggestedPrompt(item.prompt)}
@@ -1519,73 +1373,26 @@ export function FloatingAssistant() {
                           <Bot className="size-4 text-primary" />
                         </div>
                       )}
-                      <div
-                        className={cn(
-                          "max-w-[85%] rounded-2xl px-4 py-3",
-                          message.role === "user"
-                            ? "bg-primary text-primary-foreground rounded-br-md"
-                            : "bg-secondary/50 text-foreground rounded-bl-md",
-                        )}
-                      >
-                        {message.role === "assistant" ? (
-                          <div className="w-full">
-                            {message.content.trim() ? (
-                              <>
-                                <div className="flex items-start justify-between gap-2 mb-2">
-                                  <div className="flex-1">
-                                    <AIMessage content={message.content} />
-                                  </div>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 w-7 p-0"
-                                      onClick={() => {
-                                        navigator.clipboard.writeText(message.content)
-                                        toast({
-                                          title: "Copied",
-                                          description: "Message copied to clipboard",
-                                          duration: 2000,
-                                        })
-                                      }}
-                                      title="Copy message"
-                                    >
-                                      <Copy className="size-3.5" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 w-7 p-0"
-                                      onClick={() => {
-                                        if (chatMessages.length > 0) {
-                                          const lastUserMessage = [...chatMessages]
-                                            .reverse()
-                                            .find((m) => m.role === "user")
-                                          if (lastUserMessage) {
-                                            sendMessage(lastUserMessage.content)
-                                          }
-                                        }
-                                      }}
-                                      title="Regenerate response"
-                                    >
-                                      <RotateCw className="size-3.5" />
-                                    </Button>
-                                  </div>
-                                </div>
-                                {message.id && (
-                                  <AIFeedback
-                                    messageId={message.id}
-                                    sessionId={currentChatSessionId}
-                                  />
-                                )}
-                              </>
-                            ) : null}
-                          </div>
-                        ) : (
+                      {message.role === "assistant" ? (
+                        <AssistantResponse
+                          content={message.content}
+                          messageId={message.id}
+                          sessionId={currentChatSessionId}
+                          toolResults={message.toolCalls?.map((toolCall, index) =>
+                            renderToolResult(toolCall, index),
+                          )}
+                          onRegenerate={() => {
+                            const lastUserMessage = [...chatMessages]
+                              .reverse()
+                              .find((item) => item.role === "user")
+                            if (lastUserMessage) void sendMessage(lastUserMessage.content)
+                          }}
+                        />
+                      ) : (
+                        <div className="max-w-[82%] rounded-2xl rounded-br-md bg-primary px-3.5 py-2.5 text-primary-foreground">
                           <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
-                        )}
-                        {message.toolCalls?.map((toolCall, index) => renderToolResult(toolCall, index))}
-                      </div>
+                        </div>
+                      )}
                       {message.role === "user" && (
                         <div className="size-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
                           <User className="size-4 text-muted-foreground" />
@@ -1630,9 +1437,7 @@ export function FloatingAssistant() {
                 </div>
               )}
 
-              {/* Input area */}
-              {/* Adjusted styling for the input area */}
-              <div className="p-4 border-t border-border bg-background/50">
+              <div className="border-t border-border/70 bg-background/95 p-3.5 backdrop-blur-xl">
                 <div className="flex gap-2">
                   <div className="flex-1 relative">
                     <Textarea
@@ -1646,16 +1451,22 @@ export function FloatingAssistant() {
                           handleSend()
                         }
                       }}
-                      className="min-h-[48px] max-h-[120px] resize-none pr-12 rounded-xl bg-secondary/30 border-0 focus-visible:ring-1 focus-visible:ring-primary/50"
+                      className="min-h-12 max-h-[120px] resize-none rounded-xl border border-border/70 bg-secondary/25 pr-12 focus-visible:ring-2 focus-visible:ring-ring"
                       disabled={isLoading}
+                      aria-label="Message AI assistant"
                     />
-                    <span className="absolute bottom-2 right-3 text-xs text-muted-foreground">{input.length}/2000</span>
+                    {input.length >= 1_600 && (
+                      <span className="absolute bottom-2 right-3 text-xs tabular-nums text-muted-foreground">
+                        {input.length}/2000
+                      </span>
+                    )}
                   </div>
                   <Button
                     onClick={handleSend}
                     disabled={!input.trim() || isLoading}
                     size="icon"
                     className="size-12 rounded-xl shrink-0"
+                    aria-label="Send message"
                   >
                     <Send className="size-4" />
                   </Button>

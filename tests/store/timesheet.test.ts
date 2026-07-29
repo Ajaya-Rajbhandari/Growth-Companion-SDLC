@@ -30,6 +30,18 @@ vi.mock("@/lib/supabase", () => ({
   },
 }))
 
+// startBreak now persists the new break onto the time entry before it becomes
+// active, so any per-test `from()` override used around a break needs an update
+// chain in addition to insert.
+const mockOkUpdate = () =>
+  vi.fn(() => ({
+    eq: vi.fn(() => ({
+      select: vi.fn(() => ({
+        single: vi.fn(() => ({ data: null, error: null })),
+      })),
+    })),
+  }))
+
 describe("Timesheet Store", () => {
   beforeEach(() => {
     useAppStore.setState({
@@ -67,7 +79,7 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Test Task")
 
@@ -77,33 +89,11 @@ describe("Timesheet Store", () => {
       expect(timeEntries.length).toBeGreaterThan(0)
     })
 
-    it("should clock in without task title", async () => {
+    it("should require a task title before clocking in", async () => {
       const { clockIn } = useAppStore.getState()
-      const { supabase } = await import("@/lib/supabase")
-      
-      const mockInsert = vi.fn(() => ({
-        select: vi.fn(() => ({
-          single: vi.fn(() => ({
-            data: {
-              id: "entry-1",
-              date: new Date().toISOString().split("T")[0],
-              clock_in: new Date().toISOString(),
-              clock_out: null,
-              break_minutes: 0,
-              breaks: [],
-              title: null,
-              user_id: "test-user",
-            },
-            error: null,
-          })),
-        })),
-      }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
-
-      await clockIn()
-
-      const { currentEntry } = useAppStore.getState()
-      expect(currentEntry).not.toBeNull()
+      await expect(clockIn()).rejects.toThrow("Name the work")
+      await expect(clockIn("   ")).rejects.toThrow("Name the work")
+      expect(useAppStore.getState().currentEntry).toBeNull()
     })
 
     it("should prevent clocking in when already clocked in", async () => {
@@ -128,7 +118,7 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("First Task")
 
@@ -152,7 +142,7 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await expect(clockIn("Test Task")).rejects.toThrow()
     })
@@ -257,12 +247,12 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Test Task")
 
       // Start break
-      startBreak(15, "short", "Coffee break")
+      await startBreak(15, "short", "Coffee break")
       
       // End break
       const mockUpdate = vi.fn(() => ({
@@ -362,7 +352,7 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("First Task")
 
@@ -436,7 +426,7 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Task 1")
 
@@ -507,11 +497,11 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Test Task")
 
-      startBreak(15, "short", "Coffee break")
+      await startBreak(15, "short", "Coffee break")
 
       const { activeBreak } = useAppStore.getState()
       expect(activeBreak).not.toBeNull()
@@ -523,7 +513,7 @@ describe("Timesheet Store", () => {
     it("should prevent starting break when not clocked in", async () => {
       const { startBreak } = useAppStore.getState()
 
-      startBreak(15, "short")
+      await expect(startBreak(15, "short")).rejects.toThrow("You must be clocked in to start a break.")
 
       const { activeBreak } = useAppStore.getState()
       expect(activeBreak).toBeNull()
@@ -551,11 +541,11 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Test Task")
 
-      startBreak(15, "short", "Coffee break")
+      await startBreak(15, "short", "Coffee break")
 
       // End break
       const mockUpdate = vi.fn(() => ({
@@ -607,6 +597,200 @@ describe("Timesheet Store", () => {
       const { activeBreak } = useAppStore.getState()
       expect(activeBreak).toBeNull()
     })
+
+    it("persists the new break on the entry so it survives a refresh", async () => {
+      const { startBreak } = useAppStore.getState()
+      const { supabase } = await import("@/lib/supabase")
+      const entry = {
+        id: "entry-1",
+        date: getLocalDateKey(),
+        clockIn: new Date().toISOString(),
+        breakMinutes: 0,
+        breaks: [],
+        title: "Focused work",
+      }
+      useAppStore.setState({ currentEntry: entry, timeEntries: [entry] })
+
+      const eq = vi.fn(() => ({ error: null }))
+      const update = vi.fn((_payload: Record<string, any>) => ({ eq }))
+      ;(supabase.from as any).mockReturnValue({ update })
+
+      await startBreak(15, "short", "Coffee break")
+
+      const payload = update.mock.calls[0][0] as { breaks: Array<{ endTime?: string; title?: string }> }
+      expect(payload.breaks).toHaveLength(1)
+      expect(payload.breaks[0].endTime).toBeUndefined()
+      expect(payload.breaks[0].title).toBe("Coffee break")
+
+      const state = useAppStore.getState()
+      expect(state.currentEntry?.breaks).toHaveLength(1)
+      expect(state.timeEntries[0].breaks).toHaveLength(1)
+    })
+
+    it("does not activate the break when persisting it fails", async () => {
+      const { startBreak } = useAppStore.getState()
+      const { supabase } = await import("@/lib/supabase")
+      const entry = {
+        id: "entry-1",
+        date: getLocalDateKey(),
+        clockIn: new Date().toISOString(),
+        breakMinutes: 0,
+        breaks: [],
+        title: "Focused work",
+      }
+      useAppStore.setState({ currentEntry: entry, timeEntries: [entry] })
+      ;(supabase.from as any).mockReturnValue({
+        update: vi.fn(() => ({ eq: vi.fn(() => ({ error: { message: "offline" } })) })),
+      })
+
+      await expect(startBreak(15, "short")).rejects.toThrow("offline")
+
+      const state = useAppStore.getState()
+      expect(state.activeBreak).toBeNull()
+      expect(state.currentEntry?.breaks).toEqual([])
+    })
+
+    it("closes the persisted unfinished break instead of appending a duplicate", async () => {
+      const { endBreak } = useAppStore.getState()
+      const { supabase } = await import("@/lib/supabase")
+      const activeBreak = {
+        id: "break-open",
+        startTime: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+        durationMinutes: 15,
+        type: "short" as const,
+      }
+      const entry = {
+        id: "entry-1",
+        date: getLocalDateKey(),
+        clockIn: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        breakMinutes: 0,
+        breaks: [activeBreak],
+        title: "Focused work",
+      }
+      useAppStore.setState({ currentEntry: entry, timeEntries: [entry], activeBreak })
+
+      const update = vi.fn((_payload: Record<string, any>) => ({
+        eq: vi.fn(() => ({
+          select: vi.fn(() => ({
+            single: vi.fn(() => ({ data: null, error: null })),
+          })),
+        })),
+      }))
+      ;(supabase.from as any).mockReturnValue({ update })
+
+      await endBreak()
+
+      const payload = update.mock.calls[0][0] as {
+        break_minutes: number
+        breaks: Array<{ id: string; endTime?: string }>
+      }
+      expect(payload.breaks).toHaveLength(1)
+      expect(payload.breaks[0].id).toBe("break-open")
+      expect(payload.breaks[0].endTime).toBeDefined()
+      expect(payload.break_minutes).toBe(15)
+    })
+
+    it("closes the active break in place when clocking out mid-break", async () => {
+      const { clockOut } = useAppStore.getState()
+      const { supabase } = await import("@/lib/supabase")
+      const activeBreak = {
+        id: "break-open",
+        startTime: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+        durationMinutes: 15,
+        type: "lunch" as const,
+      }
+      const entry = {
+        id: "entry-1",
+        date: getLocalDateKey(),
+        clockIn: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        breakMinutes: 0,
+        breaks: [activeBreak],
+        title: "Focused work",
+      }
+      useAppStore.setState({ currentEntry: entry, timeEntries: [entry], activeBreak })
+
+      const update = vi.fn((_payload: Record<string, any>) => ({ eq: vi.fn(() => ({ error: null })) }))
+      ;(supabase.from as any).mockReturnValue({
+        update,
+        select: vi.fn(() => ({ eq: vi.fn(() => ({ order: vi.fn(() => ({ data: [], error: null })) })) })),
+      })
+
+      await clockOut()
+
+      const payload = update.mock.calls[0][0] as { breaks: Array<{ id: string; endTime?: string }> }
+      expect(payload.breaks).toHaveLength(1)
+      expect(payload.breaks[0].id).toBe("break-open")
+      expect(payload.breaks[0].endTime).toBeDefined()
+      expect(useAppStore.getState().activeBreak).toBeNull()
+    })
+  })
+
+  describe("updateCurrentEntryTitle", () => {
+    it("saves the edited title to Supabase and both local copies of the entry", async () => {
+      const { updateCurrentEntryTitle } = useAppStore.getState()
+      const { supabase } = await import("@/lib/supabase")
+      const entry = {
+        id: "entry-1",
+        date: getLocalDateKey(),
+        clockIn: new Date().toISOString(),
+        breakMinutes: 0,
+        breaks: [],
+        title: "Old title",
+      }
+      useAppStore.setState({ currentEntry: entry, timeEntries: [entry] })
+
+      const eq = vi.fn(() => ({ error: null }))
+      const update = vi.fn(() => ({ eq }))
+      ;(supabase.from as any).mockReturnValue({ update })
+
+      await updateCurrentEntryTitle("  New title  ")
+
+      expect(update).toHaveBeenCalledWith({ title: "New title" })
+      expect(eq).toHaveBeenCalledWith("id", "entry-1")
+
+      const state = useAppStore.getState()
+      expect(state.currentEntry?.title).toBe("New title")
+      expect(state.timeEntries[0].title).toBe("New title")
+    })
+
+    it("keeps the previous title when the save fails", async () => {
+      const { updateCurrentEntryTitle } = useAppStore.getState()
+      const { supabase } = await import("@/lib/supabase")
+      const entry = {
+        id: "entry-1",
+        date: getLocalDateKey(),
+        clockIn: new Date().toISOString(),
+        breakMinutes: 0,
+        breaks: [],
+        title: "Old title",
+      }
+      useAppStore.setState({ currentEntry: entry, timeEntries: [entry] })
+      ;(supabase.from as any).mockReturnValue({
+        update: vi.fn(() => ({ eq: vi.fn(() => ({ error: { message: "offline" } })) })),
+      })
+
+      await expect(updateCurrentEntryTitle("New title")).rejects.toThrow("offline")
+
+      const state = useAppStore.getState()
+      expect(state.currentEntry?.title).toBe("Old title")
+      expect(state.timeEntries[0].title).toBe("Old title")
+    })
+
+    it("rejects an empty title", async () => {
+      const { updateCurrentEntryTitle } = useAppStore.getState()
+      useAppStore.setState({
+        currentEntry: {
+          id: "entry-1",
+          date: getLocalDateKey(),
+          clockIn: new Date().toISOString(),
+          breakMinutes: 0,
+          breaks: [],
+          title: "Old title",
+        },
+      })
+
+      await expect(updateCurrentEntryTitle("   ")).rejects.toThrow("Task title is required.")
+    })
   })
 
   describe("deleteTimeEntry", () => {
@@ -648,6 +832,35 @@ describe("Timesheet Store", () => {
   })
 
   describe("Edge Cases", () => {
+    it("should freeze active work KPIs at the start of a break", () => {
+      const now = new Date()
+      const clockIn = new Date(now.getTime() - 2 * 60 * 60 * 1000)
+      const breakStart = new Date(now.getTime() - 60 * 60 * 1000)
+      const entry = {
+        id: "entry-on-break",
+        date: getLocalDateKey(now),
+        clockIn: clockIn.toISOString(),
+        breakMinutes: 0,
+        breaks: [],
+        title: "Focused work",
+      }
+
+      useAppStore.setState({
+        currentEntry: entry,
+        timeEntries: [entry],
+        activeBreak: {
+          id: "break-active",
+          startTime: breakStart.toISOString(),
+          type: "short",
+          durationMinutes: 15,
+        },
+      })
+
+      const stats = useAppStore.getState().getTodayWorkStats()
+      expect(stats.todayMinutes).toBeCloseTo(60, 1)
+      expect(stats.weeklyMinutes).toBeCloseTo(60, 1)
+    })
+
     it("should handle clock in at midnight (day transition)", async () => {
       const { clockIn } = useAppStore.getState()
       const { supabase } = await import("@/lib/supabase")
@@ -673,7 +886,7 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Midnight Task")
 
@@ -704,7 +917,7 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn(longTitle)
 
@@ -733,17 +946,21 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
       await clockIn("Test Task")
 
       // Test 0 minute break (edge case)
-      startBreak(0, "custom")
+      await startBreak(0, "custom")
       const { activeBreak } = useAppStore.getState()
       expect(activeBreak?.durationMinutes).toBe(0)
 
+      // Only one break can be active at a time, so clear it before checking the
+      // opposite duration bound.
+      useAppStore.setState({ activeBreak: null })
+
       // Test very long break (480 minutes = 8 hours)
-      startBreak(480, "custom", "Long break")
+      await startBreak(480, "custom", "Long break")
       const { activeBreak: longBreak } = useAppStore.getState()
       expect(longBreak?.durationMinutes).toBe(480)
     })
@@ -769,11 +986,11 @@ describe("Timesheet Store", () => {
           })),
         })),
       }))
-      ;(supabase.from as any).mockReturnValue({ insert: mockInsert })
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
 
-      clockIn("Test Task")
+      await clockIn("Test Task")
 
-      startBreak(15, "custom", "")
+      await startBreak(15, "custom", "")
 
       const { activeBreak } = useAppStore.getState()
       expect(activeBreak?.title).toBeUndefined()

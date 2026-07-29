@@ -46,30 +46,21 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
   const handleClockIn = () => {
     const title = workTitle.trim()
     const category = selectedCategory && selectedCategory !== "none" ? selectedCategory : undefined
-    if (title) {
-      clockIn(title, category)
-        .then(() => {
-          setWorkTitle("")
-          setSelectedCategory("none")
-          toast({
-            title: "Clocked in",
-            description: `Started "${title}".`,
-          })
-        })
-        .catch((error) => {
-          toast({
-            title: "Clock-in failed",
-            description: error instanceof Error ? error.message : "Unable to start session.",
-          })
-        })
+    if (!title) {
+      toast({
+        title: "Add your current work",
+        description: "Name the task before starting the timer.",
+        variant: "destructive",
+      })
       return
     }
-    clockIn(undefined, category)
+    clockIn(title, category)
       .then(() => {
+        setWorkTitle("")
         setSelectedCategory("none")
         toast({
           title: "Clocked in",
-          description: "Work session started.",
+          description: `Started "${title}".`,
         })
       })
       .catch((error) => {
@@ -80,15 +71,32 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
       })
   }
 
-  const handleSaveTemplate = () => {
-    if (workTitle.trim() && templateName.trim()) {
-      addWorkTemplate({
-        title: templateName,
-        description: workTitle,
+  const handleSaveTemplate = async () => {
+    if (!workTitle.trim() || !templateName.trim()) {
+      toast({
+        title: "Template needs a name",
+        description: "Add the work description and a template name first.",
+        variant: "destructive",
       })
-      setTemplateName("")
-      setShowTemplateDialog(false)
+      return
     }
+    // Await the write before closing, so a failed save doesn't look successful.
+    try {
+      await addWorkTemplate({
+        title: templateName.trim(),
+        description: workTitle.trim(),
+      })
+    } catch (error) {
+      toast({
+        title: "Couldn't save template",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+      return
+    }
+    toast({ title: "Template saved", description: `"${templateName.trim()}" is ready to reuse.` })
+    setTemplateName("")
+    setShowTemplateDialog(false)
   }
 
   const handleUseTemplate = (template: WorkTemplate) => {
@@ -188,7 +196,7 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
                 onClick={handleClockIn}
                 className="flex-1 w-full sm:w-auto min-w-0"
                 size="lg"
-                disabled={isDisabled}
+                disabled={isDisabled || !workTitle.trim()}
               >
                 <Play className="mr-2 h-4 w-4 flex-shrink-0" />
                 <span className="truncate">Clock In</span>

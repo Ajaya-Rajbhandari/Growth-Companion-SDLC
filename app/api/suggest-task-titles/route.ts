@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedUser } from "@/lib/server/auth"
 import { checkRateLimit } from "@/lib/server/rate-limit"
 import { SuggestTaskTitlesRequestSchema } from "@/lib/server/schemas"
+import { extractGeminiText, fetchGemini } from "@/lib/server/gemini"
+import { readJsonBody } from "@/lib/server/request"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 15
@@ -33,17 +35,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const body = await request.json()
-    const parsed = SuggestTaskTitlesRequestSchema.safeParse(body)
+    const body = await readJsonBody(request, 32_000)
+    if (!body.ok) {
+      return NextResponse.json({ error: body.error, suggestions: [] }, { status: body.status })
+    }
+    const parsed = SuggestTaskTitlesRequestSchema.safeParse(body.data)
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid request body", suggestions: [] }, { status: 400 })
     }
 
     const { draft, recentTitles, currentTask } = parsed.data
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { suggestions: [], error: "OPENAI_API_KEY not configured" },
+        { suggestions: [], error: "GEMINI_API_KEY not configured" },
         { status: 200 }
       )
     }
@@ -56,34 +61,32 @@ export async function POST(request: NextRequest) {
       .filter(Boolean)
       .join("\n")
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetchGemini("generateContent", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent || "Suggest 3-5 task titles for a work log." },
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: userContent || "Suggest 3-5 task titles for a work log." }],
+          },
         ],
-        temperature: 0.5,
-        max_tokens: 200,
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.5,
+          maxOutputTokens: 200,
+        },
       }),
-    })
+    }, 12_000)
 
     if (!response.ok) {
       const err = await response.text()
-      console.error("[suggest-task-titles] OpenAI error:", err)
+      console.error("[suggest-task-titles] Gemini error:", err)
       return NextResponse.json({ error: "Suggestions unavailable", suggestions: [] }, { status: 502 })
     }
 
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>
-    }
-    const raw =
-      data.choices?.[0]?.message?.content?.trim() || ""
+    const data = await response.json()
+    const raw = extractGeminiText(data)
 
     let suggestions: string[] = []
     try {

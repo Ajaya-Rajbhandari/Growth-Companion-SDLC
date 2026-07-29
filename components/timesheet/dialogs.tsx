@@ -81,6 +81,7 @@ export function BreakDialog({ open, onOpenChange, breakType, onBreakTypeChange, 
   const startBreak = useAppStore((state) => state.startBreak)
   const [breakMinutes, setBreakMinutes] = useState("")
   const [breakTitle, setBreakTitle] = useState("")
+  const [isStarting, setIsStarting] = useState(false)
 
   const resetAndClose = () => {
     onOpenChange(false)
@@ -90,6 +91,7 @@ export function BreakDialog({ open, onOpenChange, breakType, onBreakTypeChange, 
   }
 
   const handleStartBreak = async () => {
+    if (isStarting) return
     onBeforeStart()
     const durations: Record<string, number> = {
       short: 15,
@@ -116,7 +118,22 @@ export function BreakDialog({ open, onOpenChange, breakType, onBreakTypeChange, 
       return
     }
 
-    startBreak(duration, breakType, breakTitle.trim() || undefined)
+    // startBreak persists the break on the entry before it becomes active, so the
+    // dialog must stay open (and report failures) until that write settles.
+    setIsStarting(true)
+    try {
+      await startBreak(duration, breakType, breakTitle.trim() || undefined)
+    } catch (error) {
+      toast({
+        title: "Couldn't start break",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+      return
+    } finally {
+      setIsStarting(false)
+    }
+
     toast({
       title: "Break started",
       description: breakTitle.trim()
@@ -197,10 +214,10 @@ export function BreakDialog({ open, onOpenChange, breakType, onBreakTypeChange, 
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={handleStartBreak} className="flex-1">
-              Start Break
+            <Button onClick={handleStartBreak} disabled={isStarting} className="flex-1">
+              {isStarting ? "Starting…" : "Start Break"}
             </Button>
-            <Button variant="outline" onClick={resetAndClose} className="flex-1">
+            <Button variant="outline" onClick={resetAndClose} disabled={isStarting} className="flex-1">
               Cancel
             </Button>
           </div>
@@ -307,18 +324,35 @@ export function EditTaskDialog({ open, onOpenChange }: EditTaskDialogProps) {
     })),
   )
   const [editTaskTitle, setEditTaskTitle] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
     if (open) setEditTaskTitle(currentEntry?.title || "")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  const handleEditTaskTitle = () => {
-    if (editTaskTitle.trim() && currentEntry) {
-      updateCurrentEntryTitle(editTaskTitle.trim())
-      onOpenChange(false)
-      setEditTaskTitle("")
+  const handleEditTaskTitle = async () => {
+    const trimmedTitle = editTaskTitle.trim()
+    if (!trimmedTitle || !currentEntry || isSaving) return
+
+    // The title is written to Supabase, so keep the dialog open until the save
+    // settles and surface a failure instead of silently discarding the edit.
+    setIsSaving(true)
+    try {
+      await updateCurrentEntryTitle(trimmedTitle)
+    } catch (error) {
+      toast({
+        title: "Couldn't update task",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+      return
+    } finally {
+      setIsSaving(false)
     }
+
+    onOpenChange(false)
+    setEditTaskTitle("")
   }
 
   return (
@@ -336,10 +370,10 @@ export function EditTaskDialog({ open, onOpenChange }: EditTaskDialogProps) {
           />
           <div className="text-xs text-gray-400">{editTaskTitle.length}/100 characters</div>
           <div className="flex gap-2">
-            <Button onClick={handleEditTaskTitle} className="flex-1">
-              Update Task
+            <Button onClick={handleEditTaskTitle} disabled={isSaving} className="flex-1">
+              {isSaving ? "Saving…" : "Update Task"}
             </Button>
-            <Button onClick={() => onOpenChange(false)} variant="outline" className="flex-1">
+            <Button onClick={() => onOpenChange(false)} variant="outline" disabled={isSaving} className="flex-1">
               Cancel
             </Button>
           </div>
