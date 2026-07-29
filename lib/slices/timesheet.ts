@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand"
 import { supabase } from "../supabase"
-import { getLocalDateKey } from "../utils"
+import { getLocalDateKey, resolveEntryEnd } from "../utils"
 import {
   mapTimeCategoryFromDb,
   mapTimeEntryFromDb,
@@ -176,7 +176,15 @@ export const createTimesheetSlice: StateCreator<
     }
   },
   clockOut: async () => {
-    const { currentEntry, activeBreak, user } = get()
+    const {
+      currentEntry,
+      activeBreak,
+      user,
+      officeHours,
+      graceMinutes,
+      overworkMinutesRequested,
+      allowOverworkMinutes,
+    } = get()
     if (currentEntry && user) {
       const finalBreaks = [...(currentEntry.breaks || [])]
       let totalBreakMinutes = currentEntry.breakMinutes || 0
@@ -196,8 +204,19 @@ export const createTimesheetSlice: StateCreator<
         totalBreakMinutes += breakDuration
       }
 
+      // Never record more worked time than the day's applied limit allows. Without
+      // this, a session left open for days is stamped with the current time when it
+      // finally closes, permanently writing a multi-day entry into history.
+      const appliedLimitMinutes =
+        (officeHours || 9) * 60 +
+        (graceMinutes || 0) +
+        Math.min(overworkMinutesRequested || 0, allowOverworkMinutes || 0)
+      const startMs = new Date(currentEntry.clockIn).getTime()
+      const latestAllowedEndMs = startMs + (appliedLimitMinutes + totalBreakMinutes) * 60 * 1000
+      const endMs = Math.min(Date.now(), latestAllowedEndMs)
+
       const { error } = await supabase.from("time_entries").update({
-        clock_out: new Date().toISOString(),
+        clock_out: new Date(endMs).toISOString(),
         break_minutes: totalBreakMinutes,
         breaks: finalBreaks,
       }).eq("id", currentEntry.id)
@@ -212,10 +231,7 @@ export const createTimesheetSlice: StateCreator<
         currentEntry: null,
         activeBreak: null,
       })
-      const workedMinutes = Math.max(
-        0,
-        Math.round((Date.now() - new Date(currentEntry.clockIn).getTime()) / 60000) - totalBreakMinutes,
-      )
+      const workedMinutes = Math.max(0, Math.round((endMs - startMs) / 60000) - totalBreakMinutes)
       trackEvent("clock_out", user.id, {
         workedMinutes,
         breakMinutes: totalBreakMinutes,
@@ -622,7 +638,7 @@ export const createTimesheetSlice: StateCreator<
 
   calculateTotalHours: (entries: TimeEntry[]): number => {
     return entries.reduce((total, entry) => {
-      const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
+      const end = resolveEntryEnd(entry.clockIn, entry.clockOut)
       const start = new Date(entry.clockIn).getTime()
       const diffMs = Math.max(0, end - start - entry.breakMinutes * 60 * 1000)
       return total + diffMs / (1000 * 60 * 60)

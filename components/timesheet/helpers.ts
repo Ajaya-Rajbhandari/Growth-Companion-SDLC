@@ -1,5 +1,5 @@
 import type { TimeEntry } from "@/lib/store"
-import { getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
+import { getLocalDateKey, parseLocalDateKey, resolveEntryEnd } from "@/lib/utils"
 
 export type ViewPeriod = "daily" | "weekly" | "monthly" | "yearly"
 
@@ -121,7 +121,7 @@ export function calculateDuration(
   breakMinutes = 0,
 ): { hours: number; minutes: number; totalMs: number } {
   const start = new Date(clockIn).getTime()
-  const end = clockOut ? new Date(clockOut).getTime() : Date.now()
+  const end = resolveEntryEnd(clockIn, clockOut)
   const diffMs = Math.max(0, end - start - breakMinutes * 60 * 1000)
   const hours = Math.floor(diffMs / (1000 * 60 * 60))
   const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
@@ -168,7 +168,7 @@ export function calculateTotalHours(entries: TimeEntry[]): number {
     // Count in-progress sessions too (end = now), so the "worked" total matches the
     // Duration shown for an open session instead of dropping it to 0.
     const start = new Date(entry.clockIn).getTime()
-    const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now()
+    const end = resolveEntryEnd(entry.clockIn, entry.clockOut)
     const diffMs = Math.max(0, end - start - entry.breakMinutes * 60 * 1000)
     return total + diffMs / (1000 * 60 * 60)
   }, 0)

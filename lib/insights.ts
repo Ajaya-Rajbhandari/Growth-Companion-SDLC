@@ -1,5 +1,5 @@
 import type { Task, Habit, HabitLog, Goal, TimeEntry } from "./types"
-import { getLocalDateKey } from "./utils"
+import { getLocalDateKey, resolveEntryEnd } from "./utils"
 
 export interface WeeklyMetrics {
   weekHours: number
@@ -47,7 +47,7 @@ export function computeWeeklyMetrics(args: {
   for (const e of timeEntries) {
     if (!weekSet.has(e.date)) continue
     const start = new Date(e.clockIn).getTime()
-    const end = e.clockOut ? new Date(e.clockOut).getTime() : Date.now()
+    const end = resolveEntryEnd(e.clockIn, e.clockOut)
     const ms = Math.max(0, end - start - (e.breakMinutes || 0) * 60000)
     hoursByDay[e.date] = (hoursByDay[e.date] || 0) + ms / 3_600_000
   }
