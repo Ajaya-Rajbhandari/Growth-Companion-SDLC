@@ -1278,7 +1278,9 @@ export async function POST(request: Request) {
         ],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 2048,
+          // Thinking stays on here because it improves tool selection, but those
+          // tokens count against this cap — leave room for the reply itself.
+          maxOutputTokens: 4096,
         },
       }),
     }, 28_000)

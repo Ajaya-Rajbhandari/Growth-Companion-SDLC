@@ -45,6 +45,12 @@ export function fetchGemini(
   })
 }
 
+// Gemini 2.5 models spend internal "thinking" tokens before emitting any visible
+// text, and those tokens are billed against maxOutputTokens. A small cap can be
+// consumed entirely by thinking, leaving the response empty or truncated
+// mid-JSON. Disable thinking on routes that just need structured output.
+export const THINKING_DISABLED = { thinkingBudget: 0 }
+
 export function extractGeminiText(payload: unknown): string {
   const response = payload as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
@@ -56,4 +62,10 @@ export function extractGeminiText(payload: unknown): string {
       .join("")
       .trim() || ""
   )
+}
+
+// "MAX_TOKENS" means the reply was cut short and any JSON in it is unparseable.
+export function geminiFinishReason(payload: unknown): string {
+  const response = payload as { candidates?: Array<{ finishReason?: string }> }
+  return response.candidates?.[0]?.finishReason || "UNKNOWN"
 }
