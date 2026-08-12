@@ -50,8 +50,8 @@ export function ActiveSessionCard({
   if (!currentEntry) return null
 
   return (
-    <Card className="border-l-4 border-l-green-500 bg-card w-full max-w-full">
-      <CardContent className="p-2 sm:p-3 md:p-4 w-full max-w-full">
+    <Card density="compact" className="border-l-4 border-l-green-500 bg-card w-full max-w-full">
+      <CardContent className="w-full max-w-full">
         <div className="space-y-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
             <div className="flex items-center gap-2 text-foreground">
@@ -107,7 +107,7 @@ export function ActiveSessionCard({
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         <Badge
                           variant="outline"
-                          className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
+                          className={`text-xs px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
                           onClick={() => onEditBreak({ entryId: currentEntry.id, breakId: breakPeriod.id, currentTitle: breakPeriod.title })}
                           title="Click to edit break title"
                         >
@@ -116,18 +116,18 @@ export function ActiveSessionCard({
                         {breakPeriod.title && breakPeriod.type !== "custom" ? (
                           <>
                             <span className="text-foreground/90 font-medium truncate">{breakPeriod.title}</span>
-                            <span className="text-foreground/60 text-[10px]">
+                            <span className="text-foreground/60 text-xs">
                               {formatTime(breakPeriod.startTime)} → {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
                             </span>
                           </>
                         ) : (
-                          <span className="text-foreground/70 text-[10px]">
+                          <span className="text-foreground/70 text-xs">
                             {formatTime(breakPeriod.startTime)} → {breakPeriod.endTime ? formatTime(breakPeriod.endTime) : "ongoing"}
                           </span>
                         )}
                       </div>
                       {breakDuration && (
-                        <span className="text-foreground/70 font-mono text-[10px] whitespace-nowrap ml-2">
+                        <span className="text-foreground/70 font-mono text-xs whitespace-nowrap ml-2">
                           {breakDuration.hours}h {breakDuration.minutes}m
                         </span>
                       )}

@@ -31,7 +31,9 @@ export function TemplatesCard() {
   if (workTemplates.length === 0) return null
 
   return (
-    <Card className="mb-3 sm:mb-4">
+    // The parent already applies space-y-*; the mb-* this used to carry
+    // double-gapped it. Density now matches its siblings on this screen.
+    <Card density="compact">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Calendar className="h-5 w-5" />

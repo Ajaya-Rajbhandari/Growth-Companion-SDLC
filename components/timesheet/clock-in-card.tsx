@@ -117,8 +117,8 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
   }
 
   return (
-    <Card className="border-2 border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-transparent w-full max-w-full overflow-hidden !px-0">
-      <CardHeader className="p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+    <Card density="compact" className="border-2 border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-transparent w-full max-w-full overflow-hidden">
+      <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
           <Play className="h-4 w-4 flex-shrink-0" />
           <span className="truncate">Start Your Work Day</span>
@@ -127,7 +127,7 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
           Log what you&apos;re doing so your day is traceable (office rule). You can switch tasks anytime during the session.
         </p>
       </CardHeader>
-      <CardContent className="space-y-2 p-2 sm:p-3 md:p-4 w-full max-w-full overflow-hidden !px-2 sm:!px-3 md:!px-4">
+      <CardContent className="space-y-2 w-full max-w-full overflow-hidden">
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <label htmlFor="clock-in-title" className="text-xs sm:text-sm font-medium">

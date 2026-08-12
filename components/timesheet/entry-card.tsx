@@ -42,8 +42,11 @@ export function MobileEntryCard({
   const breakMinutesCount = Math.round(breakDuration / (1000 * 60))
 
   return (
-    <Card className={cn("bg-card border-border", isCurrentEntry && "bg-primary/5 border-primary/20")}>
-      <CardContent className="p-3 space-y-2">
+    <Card
+      density="compact"
+      className={cn("bg-card border-border", isCurrentEntry && "bg-primary/5 border-primary/20")}
+    >
+      <CardContent className="space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -60,7 +63,7 @@ export function MobileEntryCard({
                 return category ? (
                   <Badge
                     variant="outline"
-                    className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                    className="text-xs px-1.5 py-0 flex-shrink-0"
                     style={{
                       borderColor: category.color,
                       color: category.color,
@@ -81,7 +84,7 @@ export function MobileEntryCard({
                 {entry.clockOut ? (
                   formatTime(entry.clockOut)
                 ) : (
-                  <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/30 text-[10px]">
+                  <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/30 text-xs">
                     In Progress
                   </Badge>
                 )}
@@ -121,7 +124,7 @@ export function MobileEntryCard({
                     <div key={breakPeriod.id} className="flex items-center gap-2 text-xs">
                       <Badge
                         variant="outline"
-                        className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)}`}
+                        className={`text-xs px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)}`}
                       >
                         {getBreakTypeLabel(breakPeriod.type, breakPeriod.title)}
                       </Badge>

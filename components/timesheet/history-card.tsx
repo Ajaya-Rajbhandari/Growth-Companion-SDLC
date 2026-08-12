@@ -192,8 +192,8 @@ export function HistoryCard({
   }
 
   return (
-    <Card className="border-border bg-card w-full max-w-full overflow-hidden !px-0">
-      <CardHeader className="p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+    <Card density="compact" className="border-border bg-card w-full max-w-full overflow-hidden">
+      <CardHeader>
         <div className="space-y-1.5 sm:space-y-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <h3 className="text-sm sm:text-base font-semibold">Time History</h3>
@@ -213,7 +213,7 @@ export function HistoryCard({
               </Button>
               <div className="px-2 sm:px-4 py-2 bg-card border border-border rounded-lg text-center min-w-[100px] sm:min-w-48 flex-1 sm:flex-none max-w-full">
                 <p className="text-xs sm:text-sm font-medium text-foreground">{getPeriodLabel(selectedDate, viewPeriod)}</p>
-                <p className="text-[10px] sm:text-xs text-foreground/70 mt-1">
+                <p className="text-xs sm:text-sm text-foreground/70 mt-1">
                   {viewPeriod.charAt(0).toUpperCase() + viewPeriod.slice(1)} View
                 </p>
               </div>
@@ -281,7 +281,7 @@ export function HistoryCard({
         </div>
       </CardHeader>
 
-      <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+      <CardContent>
         {sortedDates.length === 0 ? (
           <div className="text-center py-4 text-foreground/70">
             <Clock className="size-5 sm:size-8 mx-auto mb-2 opacity-50" />
@@ -358,7 +358,7 @@ export function HistoryCard({
                                           return category ? (
                                             <Badge
                                               variant="outline"
-                                              className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                                              className="text-xs px-1.5 py-0 flex-shrink-0"
                                               style={{
                                                 borderColor: category.color,
                                                 color: category.color,
@@ -406,7 +406,7 @@ export function HistoryCard({
                                             <div key={breakPeriod.id} className="flex items-center gap-2">
                                               <Badge
                                                 variant="outline"
-                                                className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
+                                                className={`text-xs px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
                                                 onClick={() => onEditBreak({ entryId: entry.id, breakId: breakPeriod.id, currentTitle: breakPeriod.title })}
                                                 title="Click to edit break title"
                                               >
@@ -596,7 +596,7 @@ export function HistoryCard({
                                                           return category ? (
                                                             <Badge
                                                               variant="outline"
-                                                              className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                                                              className="text-xs px-1.5 py-0 flex-shrink-0"
                                                               style={{
                                                                 borderColor: category.color,
                                                                 color: category.color,
@@ -646,7 +646,7 @@ export function HistoryCard({
                                                             <div key={breakPeriod.id} className="flex items-center gap-2">
                                                               <Badge
                                                                 variant="outline"
-                                                                className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
+                                                                className={`text-xs px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
                                                                 onClick={() => onEditBreak({ entryId: entry.id, breakId: breakPeriod.id, currentTitle: breakPeriod.title })}
                                                                 title="Click to edit break title"
                                                               >
@@ -656,7 +656,7 @@ export function HistoryCard({
                                                                 {breakPeriod.title && breakPeriod.type !== "custom" ? (
                                                                   <>
                                                                     <span className="font-medium">{breakPeriod.title}</span>
-                                                                    <span className="ml-2 text-foreground/60 text-[10px]">
+                                                                    <span className="ml-2 text-foreground/60 text-xs">
                                                                       {formatTimeRange(breakPeriod.startTime, breakPeriod.endTime)}
                                                                       {null}
                                                                       {breakDuration && ` (${breakDuration.hours}h ${breakDuration.minutes}m)`}
@@ -761,7 +761,7 @@ export function HistoryCard({
                                                     return category ? (
                                                       <Badge
                                                         variant="outline"
-                                                        className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                                                        className="text-xs px-1.5 py-0 flex-shrink-0"
                                                         style={{
                                                           borderColor: category.color,
                                                           color: category.color,
@@ -811,7 +811,7 @@ export function HistoryCard({
                                                       <div key={breakPeriod.id} className="flex items-center gap-2">
                                                         <Badge
                                                           variant="outline"
-                                                          className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
+                                                          className={`text-xs px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
                                                           onClick={() => onEditBreak({ entryId: entry.id, breakId: breakPeriod.id, currentTitle: breakPeriod.title })}
                                                           title="Click to edit break title"
                                                         >
@@ -821,7 +821,7 @@ export function HistoryCard({
                                                           {breakPeriod.title ? (
                                                             <>
                                                               <span className="font-medium">{breakPeriod.title}</span>
-                                                              <span className="ml-2 text-foreground/60 text-[10px]">
+                                                              <span className="ml-2 text-foreground/60 text-xs">
                                                                 {formatTimeRange(breakPeriod.startTime, breakPeriod.endTime)}
                                                                 {null}
                                                                 {breakDuration && ` (${breakDuration.hours}h ${breakDuration.minutes}m)`}

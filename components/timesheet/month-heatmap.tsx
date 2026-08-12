@@ -77,7 +77,7 @@ export function MonthHeatmap({ selectedDate, entries, onDayClick }: MonthHeatmap
 
       <div className="grid grid-cols-7 gap-1 mb-1">
         {WEEKDAYS.map((w) => (
-          <div key={w} className="text-center text-[10px] font-medium text-muted-foreground py-1">
+          <div key={w} className="text-center text-xs font-medium text-muted-foreground py-1">
             {w}
           </div>
         ))}
@@ -113,7 +113,7 @@ export function MonthHeatmap({ selectedDate, entries, onDayClick }: MonthHeatmap
         })}
       </div>
 
-      <p className="text-[10px] text-muted-foreground mt-3">Shaded by hours worked · click a day for its task breakdown</p>
+      <p className="text-xs text-muted-foreground mt-3">Shaded by hours worked · click a day for its task breakdown</p>
     </div>
   )
 }

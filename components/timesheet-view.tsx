@@ -36,6 +36,7 @@ import { TodayTimeline } from "./timesheet/today-timeline"
 import { StatsCards } from "./timesheet/stats-cards"
 import { TemplatesCard } from "./timesheet/templates-card"
 import { HistoryCard } from "./timesheet/history-card"
+import { TimesheetSkeleton } from "./timesheet/timesheet-skeleton"
 import {
   NotesDialog,
   BreakDialog,
@@ -63,6 +64,7 @@ export function TimesheetView() {
     graceMinutes,
     allowOverworkMinutes,
     resetOverworkForToday,
+    initialDataStatus,
   } = useAppStore(
     useShallow((state) => ({
       timeEntries: state.timeEntries,
@@ -74,6 +76,7 @@ export function TimesheetView() {
       graceMinutes: state.graceMinutes,
       allowOverworkMinutes: state.allowOverworkMinutes,
       resetOverworkForToday: state.resetOverworkForToday,
+      initialDataStatus: state.initialDataStatus,
     })),
   )
 
@@ -368,6 +371,13 @@ export function TimesheetView() {
     }
   }
 
+  // "loading" is the initial fetch. Only show the placeholder when there is
+  // nothing to show yet — a background refetch of an already-populated screen
+  // should not blank out the data the user is reading.
+  if (initialDataStatus === "loading" && timeEntries.length === 0 && !currentEntry) {
+    return <TimesheetSkeleton />
+  }
+
   return (
     <div className="space-y-2 sm:space-y-3 w-full max-w-full overflow-x-hidden [&>*]:max-w-full [&>*]:overflow-x-hidden">
       {activeBreak && (
@@ -454,7 +464,7 @@ export function TimesheetView() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">Plays when your break ends.</p>
+                  <p className="text-xs text-muted-foreground">Plays when your break ends.</p>
                 </div>
               </PopoverContent>
             </Popover>
