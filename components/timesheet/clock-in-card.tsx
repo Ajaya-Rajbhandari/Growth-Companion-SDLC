@@ -129,8 +129,49 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
       </CardHeader>
       <CardContent className="space-y-2 p-2 sm:p-3 md:p-4 w-full max-w-full overflow-hidden !px-2 sm:!px-3 md:!px-4">
         <div className="space-y-2">
-          <label className="text-xs sm:text-sm font-medium">What are you working on right now?</label>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="clock-in-title" className="text-xs sm:text-sm font-medium">
+              What are you working on right now?
+            </label>
+            {/* Saving a template acts on the title above, so it belongs beside it —
+                and as a ghost link, not as a large button sharing a row with the
+                one action this whole card exists for. */}
+            <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!workTitle.trim()}
+                  className="h-8 sm:h-6 text-xs min-w-[44px] min-h-[44px] sm:min-h-0 flex-shrink-0"
+                >
+                  Save as template
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Save Work Template</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label htmlFor="template-name" className="text-sm font-medium">
+                      Template Name
+                    </label>
+                    <Input
+                      id="template-name"
+                      placeholder="e.g., Morning Development"
+                      value={templateName}
+                      onChange={(e) => setTemplateName(e.target.value)}
+                    />
+                  </div>
+                  <Button onClick={handleSaveTemplate} className="w-full">
+                    Save Template
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
           <Input
+            id="clock-in-title"
             placeholder="e.g., Team standup, Sprint planning, Code review, Deep work, Email..."
             value={workTitle}
             onChange={(e) => setWorkTitle(e.target.value)}
@@ -141,7 +182,9 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-xs sm:text-sm font-medium">Category (optional)</label>
+            <label htmlFor="clock-in-category" className="text-xs sm:text-sm font-medium">
+              Category (optional)
+            </label>
             <Button
               variant="ghost"
               size="sm"
@@ -152,7 +195,7 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
             </Button>
           </div>
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="h-12 sm:h-10 w-full max-w-full">
+            <SelectTrigger id="clock-in-category" className="h-12 sm:h-10 w-full max-w-full">
               <SelectValue placeholder="Select category" />
             </SelectTrigger>
             <SelectContent>
@@ -191,61 +234,43 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-2 w-full max-w-full">
-          {(() => {
-            const todayEntries = getTodayTimeEntries()
-            const hasClockedInToday = todayEntries.length > 0
-            const isDisabled = !!currentEntry || hasClockedInToday || isAtHardCap
-            if (hasClockedInToday && !currentEntry) {
-              return (
-                <Button className="flex-1 w-full sm:w-auto min-w-0" size="lg" disabled>
-                  <Play className="mr-2 h-4 w-4 flex-shrink-0" />
-                  <span className="truncate">Already Clocked In Today</span>
-                </Button>
-              )
-            }
+        {/* The one action this card exists for gets the row to itself and the
+            largest hit area on the screen. */}
+        {(() => {
+          const todayEntries = getTodayTimeEntries()
+          const hasClockedInToday = todayEntries.length > 0
+          const isDisabled = !!currentEntry || hasClockedInToday || isAtHardCap
+
+          // A disabled button is not focusable, so this explanation is invisible to
+          // anyone using the keyboard or a screen reader. Say it in prose instead.
+          if (hasClockedInToday && !currentEntry) {
             return (
-              <Button
-                onClick={handleClockIn}
-                className="flex-1 w-full sm:w-auto min-w-0"
-                size="lg"
-                disabled={isDisabled || isClockingIn || !workTitle.trim()}
-              >
-                {isClockingIn ? (
-                  <Spinner className="mr-2 flex-shrink-0" />
-                ) : (
-                  <Play className="mr-2 h-4 w-4 flex-shrink-0" />
-                )}
-                <span className="truncate">{isClockingIn ? "Clocking in…" : "Clock In"}</span>
-              </Button>
-            )
-          })()}
-          <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="lg" className="w-full sm:w-auto min-w-0 flex-shrink-0">
-                <span className="truncate">Save as Template</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Save Work Template</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium">Template Name</label>
-                  <Input
-                    placeholder="e.g., Morning Development"
-                    value={templateName}
-                    onChange={(e) => setTemplateName(e.target.value)}
-                  />
-                </div>
-                <Button onClick={handleSaveTemplate} className="w-full">
-                  Save Template
-                </Button>
+              <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm" role="status">
+                <p className="font-medium">You have already clocked in today.</p>
+                <p className="text-foreground/70 mt-1">
+                  The day&apos;s session is recorded below in Time History. Clocking in is available
+                  again tomorrow.
+                </p>
               </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+            )
+          }
+
+          return (
+            <Button
+              onClick={handleClockIn}
+              className="w-full h-14 sm:h-12 text-base"
+              size="lg"
+              disabled={isDisabled || isClockingIn || !workTitle.trim()}
+            >
+              {isClockingIn ? (
+                <Spinner className="mr-2 flex-shrink-0" />
+              ) : (
+                <Play className="mr-2 h-4 w-4 flex-shrink-0" />
+              )}
+              <span className="truncate">{isClockingIn ? "Clocking in…" : "Clock In"}</span>
+            </Button>
+          )
+        })()}
       </CardContent>
     </Card>
   )

@@ -76,8 +76,9 @@ export function TimesheetView() {
     })),
   )
 
-  // Time tracking
-  const [elapsedTime, setElapsedTime] = useState({ hours: 0, minutes: 0, seconds: 0 })
+  // Time tracking. Minute resolution only — the hero clock is a self-contained
+  // <LiveTimer>, and everything reading this value renders "{hours}h {minutes}m".
+  const [elapsedTime, setElapsedTime] = useState({ hours: 0, minutes: 0 })
   const [breakTimeRemaining, setBreakTimeRemaining] = useState<{ minutes: number; seconds: number } | null>(null)
   const [breakElapsed, setBreakElapsed] = useState({ minutes: 0, seconds: 0 })
   const [soundEnabled, setSoundEnabled] = useState(true)
@@ -157,9 +158,16 @@ export function TimesheetView() {
   // the session clock is frozen at the break's start time instead of ticking on.
   // This still runs during a break so a fresh mount (e.g. a refresh that restored
   // an unfinished break) shows the frozen value rather than 00:00:00.
+  //
+  // This used to tick every second, and the value is passed down to HistoryCard —
+  // an 856-line component that maps every entry in the selected period into table
+  // rows. That re-rendered the whole history 60 times a minute for a number that
+  // only changes once. It now polls on a coarse interval and returns the previous
+  // object unless the minute actually rolled over, so React bails out of the
+  // re-render entirely in between.
   useEffect(() => {
     if (!currentEntry) {
-      setElapsedTime({ hours: 0, minutes: 0, seconds: 0 })
+      setElapsedTime((prev) => (prev.hours === 0 && prev.minutes === 0 ? prev : { hours: 0, minutes: 0 }))
       return
     }
 
@@ -171,15 +179,15 @@ export function TimesheetView() {
 
       const hours = Math.floor(diffMs / (1000 * 60 * 60))
       const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-      const seconds = Math.floor((diffMs % (1000 * 60)) / 1000)
 
-      setElapsedTime({ hours, minutes, seconds })
+      setElapsedTime((prev) => (prev.hours === hours && prev.minutes === minutes ? prev : { hours, minutes }))
     }
 
     updateElapsedTime()
     if (activeBreak) return
 
-    const interval = setInterval(updateElapsedTime, 1000)
+    // 15s keeps a minute rollover visible promptly without paying for 60 wake-ups.
+    const interval = setInterval(updateElapsedTime, 15000)
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -468,7 +476,6 @@ export function TimesheetView() {
           <ClockInCard isAtHardCap={workStats.status === "hardCap"} onManageCategories={() => setShowCategoryManagement(true)} />
         ) : (
           <ActiveSessionCard
-            elapsedTime={elapsedTime}
             remainingMinutes={workStats.remainingMinutes}
             overtimeBadge={workStats.overtimeBadge}
             onEditTask={() => setEditTaskDialogOpen(true)}

@@ -87,14 +87,19 @@ export function MobileEntryCard({
               </div>
               <div>
                 <span className="font-medium">Duration:</span>{" "}
-                {isCurrentEntry ? (
-                  <span className="text-primary font-semibold">
-                    {String(elapsedTime.hours).padStart(2, "0")}h{" "}
-                    {String(elapsedTime.minutes).padStart(2, "0")}m
-                  </span>
-                ) : (
-                  `${String(duration.hours).padStart(2, "0")}h ${String(duration.minutes).padStart(2, "0")}m`
-                )}
+                {/* The desktop table already sets font-mono here. Without it the live
+                    entry's duration is proportional-width and wobbles every minute
+                    while the static rows beside it hold still. */}
+                <span className="font-mono tabular-nums">
+                  {isCurrentEntry ? (
+                    <span className="text-primary font-semibold">
+                      {String(elapsedTime.hours).padStart(2, "0")}h{" "}
+                      {String(elapsedTime.minutes).padStart(2, "0")}m
+                    </span>
+                  ) : (
+                    `${String(duration.hours).padStart(2, "0")}h ${String(duration.minutes).padStart(2, "0")}m`
+                  )}
+                </span>
               </div>
               <div>
                 <span className="font-medium">Breaks:</span>{" "}
