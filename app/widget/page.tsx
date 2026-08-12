@@ -10,6 +10,12 @@ import { Label } from "@/components/ui/label"
 import { toast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import {
+  formatBreakClock,
+  getBreakCountdown,
+  getBreakElapsed,
+  type BreakCountdown,
+} from "@/lib/break-timer"
+import {
   playNotificationSound,
   stopNotificationSound,
   getStoredSoundId,
@@ -43,7 +49,7 @@ export default function WidgetPage() {
   const router = useRouter()
   const [workTitle, setWorkTitle] = useState("")
   const [newTaskTitle, setNewTaskTitle] = useState("")
-  const [breakTimeRemaining, setBreakTimeRemaining] = useState<{ minutes: number; seconds: number } | null>(null)
+  const [breakTimeRemaining, setBreakTimeRemaining] = useState<BreakCountdown | null>(null)
   const [breakElapsed, setBreakElapsed] = useState({ minutes: 0, seconds: 0 })
   const [breakEndedAlert, setBreakEndedAlert] = useState(false)
   const [soundEnabled, setSoundEnabled] = useState(true)
@@ -193,22 +199,13 @@ export default function WidgetPage() {
   useEffect(() => {
     if (activeBreak) {
       const updateBreakTime = () => {
-        const startTime = new Date(activeBreak.startTime).getTime()
         const now = Date.now()
-        const elapsedMs = now - startTime
-        const elapsedMins = Math.floor(elapsedMs / (1000 * 60))
-        const elapsedSecs = Math.floor((elapsedMs % (1000 * 60)) / 1000)
-        setBreakElapsed({ minutes: elapsedMins, seconds: elapsedSecs })
-        if (activeBreak.durationMinutes) {
-          const totalBreakMs = activeBreak.durationMinutes * 60 * 1000
-          const remainingMs = Math.max(0, totalBreakMs - elapsedMs)
-          if (remainingMs <= 0 && !breakEndedAlert) playAlarm()
-          const remainingMins = Math.floor(remainingMs / (1000 * 60))
-          const remainingSecs = Math.floor((remainingMs % (1000 * 60)) / 1000)
-          setBreakTimeRemaining({ minutes: remainingMins, seconds: remainingSecs })
-        } else {
-          setBreakTimeRemaining(null)
-        }
+        setBreakElapsed(getBreakElapsed(activeBreak.startTime, now))
+
+        const countdown = getBreakCountdown(activeBreak.startTime, activeBreak.durationMinutes, now)
+        setBreakTimeRemaining(countdown)
+
+        if (countdown?.isOverrun && !breakEndedAlert) playAlarm()
       }
       updateBreakTime()
       const interval = setInterval(updateBreakTime, 1000)
@@ -406,17 +403,23 @@ export default function WidgetPage() {
             </span>
           </div>
           <div className="text-center mb-4">
-            {breakTimeRemaining && breakTimeRemaining.minutes >= 0 ? (
-              <p className="text-3xl font-mono font-bold text-amber-700 dark:text-amber-400">
-                {String(breakTimeRemaining.minutes).padStart(2, "0")}:{String(breakTimeRemaining.seconds).padStart(2, "0")}
+            {breakTimeRemaining ? (
+              <p
+                className={
+                  breakTimeRemaining.isOverrun
+                    ? "text-3xl font-mono tabular-nums font-bold text-red-700 dark:text-red-400"
+                    : "text-3xl font-mono tabular-nums font-bold text-amber-700 dark:text-amber-400"
+                }
+              >
+                {formatBreakClock(breakTimeRemaining)}
               </p>
             ) : (
-              <p className="text-3xl font-mono font-bold text-amber-700 dark:text-amber-400">
+              <p className="text-3xl font-mono tabular-nums font-bold text-amber-700 dark:text-amber-400">
                 {String(breakElapsed.minutes).padStart(2, "0")}:{String(breakElapsed.seconds).padStart(2, "0")}
               </p>
             )}
             <p className="text-xs text-muted-foreground mt-1">
-              {breakTimeRemaining && breakTimeRemaining.minutes >= 0 ? "remaining" : "elapsed"}
+              {!breakTimeRemaining ? "elapsed" : breakTimeRemaining.isOverrun ? "over" : "remaining"}
             </p>
           </div>
           {breakEndedAlert && (

@@ -4,7 +4,7 @@ import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Calendar } from "lucide-react"
+import { Calendar, Trash2 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 
 export function TemplatesCard() {
@@ -46,8 +46,13 @@ export function TemplatesCard() {
                 <p className="font-medium text-sm">{template.title}</p>
                 <p className="text-xs text-foreground/70">Used {template.usageCount} times</p>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => handleDelete(template.id, template.title)}>
-                ×
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleDelete(template.id, template.title)}
+                aria-label={`Delete template ${template.title}`}
+              >
+                <Trash2 className="size-4" />
               </Button>
             </div>
           ))}

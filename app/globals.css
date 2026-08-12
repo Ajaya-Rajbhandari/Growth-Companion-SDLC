@@ -82,7 +82,11 @@
 }
 
 @theme inline {
-  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
+  /* Supplied by next/font in app/layout.tsx, which sets --font-geist-* on <html>.
+     Without these two lines `font-sans` and `font-mono` resolve to the system
+     stacks and the downloaded webfonts go unused. */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -146,6 +150,27 @@
   button, a, [role="button"] {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* The timesheet renders an independent pulsing dot per open session, so a busy
+     history view can have several running at once. Honour the OS setting.
+     Animations are reduced to a single near-instant pass rather than removed, so
+     anything relying on an animation/transition end event still fires. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+
+    /* Without the pulse, "live" needs to survive as something static. */
+    .animate-pulse {
+      outline: 2px solid currentColor;
+      outline-offset: 2px;
+    }
   }
   
   /* Safe area insets for notched devices */

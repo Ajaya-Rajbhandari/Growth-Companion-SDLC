@@ -31,6 +31,7 @@ import {
   Clock,
   Download,
   FileSpreadsheet,
+  MoreHorizontal,
 } from "lucide-react"
 import {
   type ViewPeriod,
@@ -431,8 +432,12 @@ export function HistoryCard({
                                   <TableCell>
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="sm">
-                                          ⋯
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          aria-label={`Actions for ${getSessionHeadline(entry) || "this entry"}`}
+                                        >
+                                          <MoreHorizontal className="size-4" />
                                         </Button>
                                       </DropdownMenuTrigger>
                                       <DropdownMenuContent align="end">
@@ -681,8 +686,12 @@ export function HistoryCard({
                                                   <TableCell>
                                                     <DropdownMenu>
                                                       <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" size="sm">
-                                                          ⋯
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          aria-label={`Actions for ${getSessionHeadline(entry) || "this entry"}`}
+                                                        >
+                                                          <MoreHorizontal className="size-4" />
                                                         </Button>
                                                       </DropdownMenuTrigger>
                                                       <DropdownMenuContent align="end">
@@ -842,8 +851,12 @@ export function HistoryCard({
                                             <TableCell>
                                               <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
-                                                  <Button variant="ghost" size="sm">
-                                                    ⋯
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    aria-label={`Actions for ${getSessionHeadline(entry) || "this entry"}`}
+                                                  >
+                                                    <MoreHorizontal className="size-4" />
                                                   </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">

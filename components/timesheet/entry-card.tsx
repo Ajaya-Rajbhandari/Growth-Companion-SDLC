@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { calculateDuration, formatTime, formatTimeRange, getBreakTypeBadgeColor, getBreakTypeLabel, getSessionHeadline } from "./helpers"
 import { SessionTasks } from "./session-tasks"
@@ -141,8 +142,15 @@ export function MobileEntryCard({
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="min-w-[44px] min-h-[44px]">
-                ⋯
+              {/* Was a bare "⋯" character, which screen readers announce literally
+                  as "midline horizontal ellipsis". */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="min-w-[44px] min-h-[44px]"
+                aria-label={`Actions for ${getSessionHeadline(entry) || "this entry"}`}
+              >
+                <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">

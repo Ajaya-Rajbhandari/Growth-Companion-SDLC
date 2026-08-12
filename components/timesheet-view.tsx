@@ -15,6 +15,7 @@ import {
   type NotificationSoundId,
 } from "@/lib/notification-sound"
 import { cn, getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
+import { getBreakCountdown, getBreakElapsed, type BreakCountdown } from "@/lib/break-timer"
 
 import {
   type ViewPeriod,
@@ -79,7 +80,7 @@ export function TimesheetView() {
   // Time tracking. Minute resolution only — the hero clock is a self-contained
   // <LiveTimer>, and everything reading this value renders "{hours}h {minutes}m".
   const [elapsedTime, setElapsedTime] = useState({ hours: 0, minutes: 0 })
-  const [breakTimeRemaining, setBreakTimeRemaining] = useState<{ minutes: number; seconds: number } | null>(null)
+  const [breakTimeRemaining, setBreakTimeRemaining] = useState<BreakCountdown | null>(null)
   const [breakElapsed, setBreakElapsed] = useState({ minutes: 0, seconds: 0 })
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [notificationSoundId, setNotificationSoundId] = useState<NotificationSoundId>("default")
@@ -207,27 +208,15 @@ export function TimesheetView() {
   useEffect(() => {
     if (activeBreak) {
       const updateBreakTime = () => {
-        const startTime = new Date(activeBreak.startTime).getTime()
         const now = Date.now()
-        const elapsedMs = now - startTime
+        setBreakElapsed(getBreakElapsed(activeBreak.startTime, now))
 
-        const elapsedMins = Math.floor(elapsedMs / (1000 * 60))
-        const elapsedSecs = Math.floor((elapsedMs % (1000 * 60)) / 1000)
-        setBreakElapsed({ minutes: elapsedMins, seconds: elapsedSecs })
+        // Null means an open-ended break — nothing to count down to, and no alarm.
+        const countdown = getBreakCountdown(activeBreak.startTime, activeBreak.durationMinutes, now)
+        setBreakTimeRemaining(countdown)
 
-        if (activeBreak.durationMinutes) {
-          const totalBreakMs = activeBreak.durationMinutes * 60 * 1000
-          const remainingMs = Math.max(0, totalBreakMs - elapsedMs)
-
-          if (remainingMs <= 0 && !breakEndedAlert) {
-            playAlarm()
-          }
-
-          const remainingMins = Math.floor(remainingMs / (1000 * 60))
-          const remainingSecs = Math.floor((remainingMs % (1000 * 60)) / 1000)
-          setBreakTimeRemaining({ minutes: remainingMins, seconds: remainingSecs })
-        } else {
-          setBreakTimeRemaining(null)
+        if (countdown?.isOverrun && !breakEndedAlert) {
+          playAlarm()
         }
       }
 
