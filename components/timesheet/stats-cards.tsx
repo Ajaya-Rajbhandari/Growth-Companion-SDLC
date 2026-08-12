@@ -92,7 +92,7 @@ export function StatsCards({ workStats, filteredEntries }: StatsCardsProps) {
             <div className="text-xl sm:text-2xl font-bold text-foreground">{weeklyHours.toFixed(1)}h</div>
             <p className="text-xs text-foreground/70 mt-1">{thisWeekEntries.length} session(s)</p>
             {workStats.weeklyCatchUpMinutes > 0 ? (
-              <p className="text-xs text-amber-500 mt-1">
+              <p className="text-xs text-amber-700 dark:text-amber-500 mt-1">
                 Catch-up available: {formatMinutes(workStats.weeklyCatchUpMinutes)}
               </p>
             ) : (

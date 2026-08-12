@@ -21,13 +21,15 @@ function hoursByDay(entries: TimeEntry[]): Record<string, number> {
 }
 
 // Tailwind background by how a day's hours compare to the busiest day of the period.
+// The ladder tops out at /50 rather than /75: past that the label on the busiest —
+// i.e. most important — cells dropped to ~2.1:1. At /50 every step clears 6.7:1.
 function intensityClass(hours: number, maxHours: number): string {
   if (hours <= 0) return "bg-muted/20"
   const ratio = maxHours > 0 ? hours / maxHours : 0
   if (ratio <= 0.25) return "bg-primary/15"
-  if (ratio <= 0.5) return "bg-primary/30"
-  if (ratio <= 0.75) return "bg-primary/50"
-  return "bg-primary/75"
+  if (ratio <= 0.5) return "bg-primary/25"
+  if (ratio <= 0.75) return "bg-primary/35"
+  return "bg-primary/50"
 }
 
 interface MonthHeatmapProps {
@@ -100,11 +102,11 @@ export function MonthHeatmap({ selectedDate, entries, onDayClick }: MonthHeatmap
                 hasWork ? "cursor-pointer hover:ring-1 hover:ring-primary" : "cursor-default",
               )}
             >
-              <span className={cn("text-xs leading-none", hasWork ? "font-semibold text-foreground" : "text-foreground/40")}>
+              <span className={cn("text-xs leading-none", hasWork ? "font-semibold text-foreground" : "text-foreground/60")}>
                 {cell.day}
               </span>
               {hasWork && (
-                <span className="text-[10px] leading-tight text-foreground/70 mt-0.5 tabular-nums">{cell.hours.toFixed(1)}h</span>
+                <span className="text-xs leading-tight text-foreground mt-0.5 tabular-nums">{cell.hours.toFixed(1)}h</span>
               )}
             </button>
           )

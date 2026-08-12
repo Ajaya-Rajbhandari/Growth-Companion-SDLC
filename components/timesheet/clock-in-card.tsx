@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/use-toast"
 import { Play } from "lucide-react"
 
@@ -39,6 +40,7 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
   const [selectedCategory, setSelectedCategory] = useState<string>("none")
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
   const [templateName, setTemplateName] = useState("")
+  const [isClockingIn, setIsClockingIn] = useState(false)
 
   const topTemplates = getTopTemplates()
 
@@ -54,6 +56,13 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
       })
       return
     }
+    // The store writes state only once Supabase confirms, so `currentEntry` and
+    // `hasClockedInToday` below stay stale for the whole round trip. Without this
+    // flag the button keeps its normal label and stays pressable while the write
+    // is in flight, which on a slow connection reads as "my tap didn't register".
+    if (isClockingIn) return
+    setIsClockingIn(true)
+
     clockIn(title, category)
       .then(() => {
         setWorkTitle("")
@@ -67,7 +76,11 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
         toast({
           title: "Clock-in failed",
           description: error instanceof Error ? error.message : "Unable to start session.",
+          variant: "destructive",
         })
+      })
+      .finally(() => {
+        setIsClockingIn(false)
       })
   }
 
@@ -121,7 +134,7 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
             placeholder="e.g., Team standup, Sprint planning, Code review, Deep work, Email..."
             value={workTitle}
             onChange={(e) => setWorkTitle(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleClockIn()}
+            onKeyDown={(e) => e.key === "Enter" && handleClockIn()}
             className="text-base h-12 sm:h-10 w-full max-w-full"
           />
         </div>
@@ -196,10 +209,14 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
                 onClick={handleClockIn}
                 className="flex-1 w-full sm:w-auto min-w-0"
                 size="lg"
-                disabled={isDisabled || !workTitle.trim()}
+                disabled={isDisabled || isClockingIn || !workTitle.trim()}
               >
-                <Play className="mr-2 h-4 w-4 flex-shrink-0" />
-                <span className="truncate">Clock In</span>
+                {isClockingIn ? (
+                  <Spinner className="mr-2 flex-shrink-0" />
+                ) : (
+                  <Play className="mr-2 h-4 w-4 flex-shrink-0" />
+                )}
+                <span className="truncate">{isClockingIn ? "Clocking in…" : "Clock In"}</span>
               </Button>
             )
           })()}

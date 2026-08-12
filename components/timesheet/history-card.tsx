@@ -1,13 +1,24 @@
 "use client"
 
-import React, { useMemo } from "react"
+import React, { useMemo, useState } from "react"
 import { useAppStore, type TimeEntry } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ToastAction } from "@/components/ui/toast"
 import { cn, parseLocalDateKey } from "@/lib/utils"
 import { toast } from "@/components/ui/use-toast"
 import {
@@ -43,6 +54,17 @@ import { exportToCSV, exportToExcel, exportToJSON } from "./export"
 import { MobileEntryCard } from "./entry-card"
 import type { SelectedBreak } from "./dialogs"
 
+// "Sprint planning · Mon, Aug 10 · 3h 12m" — enough for someone to recognise the
+// record they are about to lose, or the one they just got back.
+function describeEntry(entry: TimeEntry): string {
+  const duration = calculateDuration(entry.clockIn, entry.clockOut, entry.breakMinutes)
+  return [
+    getSessionHeadline(entry) || "Untitled session",
+    formatDate(entry.date),
+    `${duration.hours}h ${duration.minutes}m`,
+  ].join(" · ")
+}
+
 interface HistoryCardProps {
   viewPeriod: ViewPeriod
   onViewPeriodChange: (period: ViewPeriod) => void
@@ -66,13 +88,17 @@ export function HistoryCard({
   onOpenNotes,
   onEditBreak,
 }: HistoryCardProps) {
-  const { currentEntry, timeCategories, deleteTimeEntry } = useAppStore(
+  const { currentEntry, timeCategories, deleteTimeEntry, restoreTimeEntry } = useAppStore(
     useShallow((state) => ({
       currentEntry: state.currentEntry,
       timeCategories: state.timeCategories,
       deleteTimeEntry: state.deleteTimeEntry,
+      restoreTimeEntry: state.restoreTimeEntry,
     })),
   )
+
+  const [pendingDelete, setPendingDelete] = useState<TimeEntry | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const groupedEntries = useMemo(() => {
     return groupEntriesByDate(filteredEntries)
@@ -113,19 +139,54 @@ export function HistoryCard({
     onSelectedDateChange(new Date())
   }
 
-  const handleDeleteEntry = (entryId: string) => {
-    deleteTimeEntry(entryId)
+  // Deleting a timesheet record is the highest-consequence action on this screen, so
+  // it takes two deliberate steps and stays recoverable afterwards: a confirmation
+  // naming the entry, then a toast that can put it back under its original id.
+  const handleDeleteEntry = (entry: TimeEntry) => {
+    setPendingDelete(entry)
+  }
+
+  const handleUndoDelete = (entry: TimeEntry) => {
+    restoreTimeEntry(entry)
       .then(() => {
+        toast({ title: "Entry restored", description: describeEntry(entry) })
+      })
+      .catch((error) => {
+        toast({
+          title: "Restore failed",
+          description: error instanceof Error ? error.message : "Unable to restore entry.",
+          variant: "destructive",
+        })
+      })
+  }
+
+  const handleConfirmDelete = () => {
+    const entry = pendingDelete
+    if (!entry) return
+
+    setIsDeleting(true)
+    deleteTimeEntry(entry.id)
+      .then(() => {
+        setPendingDelete(null)
         toast({
           title: "Entry deleted",
-          description: "Time entry removed.",
+          description: describeEntry(entry),
+          action: (
+            <ToastAction altText="Undo deleting this time entry" onClick={() => handleUndoDelete(entry)}>
+              Undo
+            </ToastAction>
+          ),
         })
       })
       .catch((error) => {
         toast({
           title: "Delete failed",
           description: error instanceof Error ? error.message : "Unable to delete entry.",
+          variant: "destructive",
         })
+      })
+      .finally(() => {
+        setIsDeleting(false)
       })
   }
 
@@ -317,7 +378,7 @@ export function HistoryCard({
                                     ) : (
                                       <Badge
                                         variant="secondary"
-                                        className="bg-primary/20 text-primary border-primary/30"
+                                        className="bg-primary/10 text-primary border-primary/30"
                                       >
                                         In Progress
                                       </Badge>
@@ -384,7 +445,7 @@ export function HistoryCard({
                                           </DropdownMenuItem>
                                         )}
                                         <DropdownMenuItem
-                                          onClick={() => handleDeleteEntry(entry.id)}
+                                          onClick={() => handleDeleteEntry(entry)}
                                           className="text-destructive"
                                         >
                                           Delete
@@ -553,7 +614,7 @@ export function HistoryCard({
                                                     ) : (
                                                       <Badge
                                                         variant="secondary"
-                                                        className="bg-primary/20 text-primary border-primary/30"
+                                                        className="bg-primary/10 text-primary border-primary/30"
                                                       >
                                                         In Progress
                                                       </Badge>
@@ -637,7 +698,7 @@ export function HistoryCard({
                                                           </DropdownMenuItem>
                                                         )}
                                                         <DropdownMenuItem
-                                                          onClick={() => handleDeleteEntry(entry.id)}
+                                                          onClick={() => handleDeleteEntry(entry)}
                                                           className="text-destructive"
                                                         >
                                                           Delete
@@ -714,7 +775,7 @@ export function HistoryCard({
                                               ) : (
                                                 <Badge
                                                   variant="secondary"
-                                                  className="bg-primary/20 text-primary border-primary/30"
+                                                  className="bg-primary/10 text-primary border-primary/30"
                                                 >
                                                   In Progress
                                                 </Badge>
@@ -798,7 +859,7 @@ export function HistoryCard({
                                                     </DropdownMenuItem>
                                                   )}
                                                   <DropdownMenuItem
-                                                    onClick={() => handleDeleteEntry(entry.id)}
+                                                    onClick={() => handleDeleteEntry(entry)}
                                                     className="text-destructive"
                                                   >
                                                     Delete
@@ -851,6 +912,40 @@ export function HistoryCard({
           </div>
         )}
       </CardContent>
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setPendingDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this time entry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete ? describeEntry(pendingDelete) : ""}
+              <span className="mt-2 block">
+                This removes the record from your timesheet. You can undo it from the confirmation
+                that follows.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Keep entry</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                // Deletion is async; let the dialog close from the resolved handler instead.
+                event.preventDefault()
+                handleConfirmDelete()
+              }}
+              disabled={isDeleting}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting…" : "Delete entry"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

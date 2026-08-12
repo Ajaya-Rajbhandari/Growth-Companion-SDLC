@@ -106,6 +106,18 @@ After running all migrations, verify the tables exist:
 7. ✅ `007_add_completed_to_tasks.sql`
 8. ✅ `008_cleanup_legacy_task_columns.sql`
 
+### `017_one_time_entry_per_day.sql`
+
+Adds a unique index on `time_entries (user_id, date)`, making the app's
+once-per-day clock-in rule a database constraint rather than a client-side
+check. The check in `clockIn()` is a SELECT followed by an INSERT, which two
+near-simultaneous requests can both pass.
+
+It **aborts with an error** if the table already contains more than one entry
+for the same user and day, listing the worst offenders instead of guessing which
+row to remove. Resolve those by hand and re-run. On a clean table it is a no-op
+on re-run.
+
 ## One-off Repairs
 
 `015_repair_inflated_time_entries.sql` is **not** a schema migration and is not

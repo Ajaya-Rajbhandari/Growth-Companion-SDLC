@@ -117,7 +117,7 @@ export function TodayTimeline() {
                 </span>
                 <span className="flex-1 min-w-0 font-medium truncate">{item.label}</span>
                 {item.type === "break" && (
-                  <Coffee className="size-4 text-amber-500 flex-shrink-0" />
+                  <Coffee className="size-4 text-amber-700 dark:text-amber-500 flex-shrink-0" />
                 )}
                 {durationStr && (
                   <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">

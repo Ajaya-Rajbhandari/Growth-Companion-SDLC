@@ -16,7 +16,8 @@ interface MobileEntryCardProps {
   timeCategories: TimeCategory[]
   onOpenNotes: (entry: TimeEntry) => void
   onClockOut: () => void
-  onDelete: (entryId: string) => void
+  // Takes the whole entry, not just its id, so the confirmation can name the record.
+  onDelete: (entry: TimeEntry) => void
 }
 
 // Mobile card layout for a single time entry (shared by daily and weekly views).
@@ -79,7 +80,7 @@ export function MobileEntryCard({
                 {entry.clockOut ? (
                   formatTime(entry.clockOut)
                 ) : (
-                  <Badge variant="secondary" className="bg-primary/20 text-primary border-primary/30 text-[10px]">
+                  <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/30 text-[10px]">
                     In Progress
                   </Badge>
                 )}
@@ -149,7 +150,7 @@ export function MobileEntryCard({
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
-                onClick={() => onDelete(entry.id)}
+                onClick={() => onDelete(entry)}
                 className="text-destructive"
               >
                 Delete

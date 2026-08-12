@@ -46,7 +46,7 @@ export function SessionTasks({ entry, layout = "compact" }: SessionTasksProps) {
                   {seg.isCurrent && (
                     <Badge
                       variant="outline"
-                      className="text-[9px] px-1 py-0 border-green-500/50 text-green-600 dark:text-green-400 flex-shrink-0"
+                      className="text-[9px] px-1 py-0 border-green-500/50 text-green-700 dark:text-green-400 flex-shrink-0"
                     >
                       Current
                     </Badge>
@@ -85,7 +85,7 @@ export function SessionTasks({ entry, layout = "compact" }: SessionTasksProps) {
                 {seg.isCurrent && (
                   <Badge
                     variant="outline"
-                    className="text-[9px] px-1 py-0 border-green-500/50 text-green-600 dark:text-green-400 flex-shrink-0"
+                    className="text-[9px] px-1 py-0 border-green-500/50 text-green-700 dark:text-green-400 flex-shrink-0"
                   >
                     Current
                   </Badge>

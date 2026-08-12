@@ -5,7 +5,10 @@ import * as React from 'react'
 
 import type { ToastActionElement, ToastProps } from '@/components/ui/toast'
 
-const TOAST_LIMIT = 1
+// A limit of 1 meant a concurrent warning (the 8h/8h30 notices fire from the same
+// effect pass) could destroy an unread toast — including the one carrying "Undo"
+// on a deleted time entry.
+const TOAST_LIMIT = 3
 const TOAST_REMOVE_DELAY = 1000000
 
 type ToasterToast = ToastProps & {
