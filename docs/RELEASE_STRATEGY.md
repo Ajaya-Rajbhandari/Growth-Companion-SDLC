@@ -141,15 +141,35 @@ Release   Feature            Changes
 
 If critical issues found:
 
-```bash
-# Revert to previous commit
-git revert HEAD
-git push origin main
+**Production first, git second.** A `git push` triggers the full release gate
+(typecheck, lint, tests, build, Playwright — up to 20 minutes) and only then a
+Vercel build, so reverting through git prolongs the outage. Re-alias production
+to the last good build first, which takes seconds and needs no rebuild:
 
-# Or revert to specific version
-git checkout v1.0.0
-git push origin main --force
+```bash
+vercel ls --environment production      # find the last known-good deployment
+vercel rollback <deployment-url>        # re-alias production to it
 ```
+
+Then make it durable, because `vercel rollback` does not touch git — `main`
+still points at the bad commit, so the next push would silently reinstate it:
+
+```bash
+git checkout -b fix/revert-<incident-id>
+git revert <bad-sha>
+gh pr create --base main --title "revert: <incident-id>"
+```
+
+> 🚫 **Never `git push origin main --force`.** This section previously
+> recommended `git checkout v1.0.0 && git push origin main --force`. Force-pushing
+> a shared branch under incident pressure discards other people's commits and
+> turns a recoverable outage into an unrecoverable repository. Use the revert PR
+> above instead.
+
+See [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md) for the full procedure,
+including the feature-flag kill switch and the migration caveat (a code rollback
+across a migration boundary is only safe if the old code tolerates the new
+schema).
 
 ## Feature Roadmap
 
