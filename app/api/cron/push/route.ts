@@ -9,8 +9,11 @@ export const dynamic = "force-dynamic"
 // the service-role key, so it must never be exposed — Vercel Cron authenticates
 // via the CRON_SECRET bearer token.
 export async function GET(request: Request) {
+  // Fail closed. A missing CRON_SECRET used to skip this check entirely, which
+  // left an unauthenticated caller running the service-role branch below with
+  // RLS bypassed. An unset secret is now a misconfiguration, not an open door.
   const secret = process.env.CRON_SECRET
-  if (secret && request.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
     return Response.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -27,17 +30,30 @@ export async function GET(request: Request) {
 
   const today = new Date().toISOString().slice(0, 10)
 
-  const { data: subs } = await supabase.from("push_subscriptions").select("user_id, endpoint, p256dh, auth")
-  if (!subs || subs.length === 0) return Response.json({ sent: 0 })
+  // Query errors used to be discarded here, so a failed read produced `subs = null`
+  // and an early `{ sent: 0 }` with HTTP 200 — a fully broken run that reported
+  // green in the Vercel cron log. Surface them instead.
+  const { data: subs, error: subsError } = await supabase
+    .from("push_subscriptions")
+    .select("user_id, endpoint, p256dh, auth")
+  if (subsError) {
+    console.error("[cron/push] failed to read push_subscriptions:", subsError.message)
+    return Response.json({ error: "Failed to read subscriptions" }, { status: 500 })
+  }
+  if (!subs || subs.length === 0) return Response.json({ sent: 0, subscriptions: 0 })
 
   const userIds = [...new Set(subs.map((s) => s.user_id))]
-  const { data: tasks } = await supabase
+  const { data: tasks, error: tasksError } = await supabase
     .from("tasks")
     .select("user_id, due_date")
     .in("user_id", userIds)
     .eq("completed", false)
     .not("due_date", "is", null)
     .lte("due_date", today)
+  if (tasksError) {
+    console.error("[cron/push] failed to read tasks:", tasksError.message)
+    return Response.json({ error: "Failed to read tasks" }, { status: 500 })
+  }
 
   const counts: Record<string, { overdue: number; today: number }> = {}
   for (const t of tasks || []) {
@@ -48,6 +64,8 @@ export async function GET(request: Request) {
   }
 
   let sent = 0
+  let failed = 0
+  let pruned = 0
   for (const sub of subs) {
     const c = counts[sub.user_id]
     if (!c || (c.overdue === 0 && c.today === 0)) continue
@@ -69,10 +87,24 @@ export async function GET(request: Request) {
     } catch (err) {
       const status = (err as { statusCode?: number })?.statusCode
       if (status === 404 || status === 410) {
+        // Expected: the endpoint is gone. Pruning it is success, not failure.
         await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint)
+        pruned++
+      } else {
+        failed++
+        console.error(`[cron/push] send failed (status ${status ?? "unknown"}):`, err)
       }
     }
   }
 
-  return Response.json({ sent })
+  // A run where every attempted send failed is a failed run. Reporting HTTP 200
+  // would leave the cron log green while no user received anything.
+  if (failed > 0 && sent === 0) {
+    return Response.json(
+      { error: "All push sends failed", sent, failed, pruned },
+      { status: 500 },
+    )
+  }
+
+  return Response.json({ sent, failed, pruned, subscriptions: subs.length })
 }
