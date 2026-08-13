@@ -1,6 +1,5 @@
-import { createServerClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
-import { getLocalDateKey } from "@/lib/utils"
+import { getLocalDateKey, resolveEntryEnd } from "@/lib/utils"
+import { createServerSupabase, getAuthenticatedUser } from "@/lib/server/auth"
 import { SummaryResponseSchema } from "@/lib/server/schemas"
 
 export const dynamic = "force-dynamic"
@@ -8,30 +7,18 @@ export const maxDuration = 30
 
 export async function GET() {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll: () => cookieStore.getAll(),
-          setAll: (allCookies) => {
-            allCookies.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-          },
-        },
-      },
-    )
+    // Shared helper rather than a hand-rolled client: it verifies the user
+    // against the auth server with getUser() instead of trusting the cookie via
+    // getSession(), matching every other route, and it tolerates the read-only
+    // cookie store of a Server Component render.
+    const user = await getAuthenticatedUser()
+    const supabase = await createServerSupabase()
 
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession()
-
-    if (sessionError || !session) {
+    if (!user || !supabase) {
       return Response.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const userId = session.user.id
+    const userId = user.id
     const today = getLocalDateKey()
 
     const [{ count: taskCount }, { count: noteCount }, { data: timeEntries }] = await Promise.all([
@@ -55,7 +42,10 @@ export async function GET() {
     const todayHours =
       timeEntries?.reduce((total, entry) => {
         const start = new Date(entry.clock_in).getTime()
-        const end = entry.clock_out ? new Date(entry.clock_out).getTime() : Date.now()
+        // resolveEntryEnd, not Date.now(): an open entry stops accruing at
+        // midnight of the day it started. dc50cc2 fixed this everywhere else and
+        // missed this file, so a forgotten clock-out inflated todayHours here.
+        const end = resolveEntryEnd(entry.clock_in, entry.clock_out ?? undefined)
         const breakMs = (entry.break_minutes || 0) * 60 * 1000
         const diffMs = Math.max(0, end - start - breakMs)
         return total + diffMs / (1000 * 60 * 60)
