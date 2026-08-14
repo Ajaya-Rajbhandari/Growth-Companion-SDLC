@@ -5,6 +5,7 @@
   "framework": "nextjs",
   "regions": ["iad1"],
   "crons": [
-    { "path": "/api/cron/push", "schedule": "0 13 * * *" }
+    { "path": "/api/cron/push", "schedule": "0 13 * * *" },
+    { "path": "/api/cron/data-check", "schedule": "30 13 * * *" }
   ]
 }
