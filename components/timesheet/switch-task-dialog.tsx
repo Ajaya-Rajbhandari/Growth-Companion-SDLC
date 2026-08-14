@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { toast } from "@/components/ui/use-toast"
 import { useTaskTitleSuggestions } from "./use-task-title-suggestions"
+import { useScreenshotTitle } from "./use-screenshot-title"
+import { ScreenshotTitleField } from "./screenshot-title-field"
 
 interface SwitchTaskDialogProps {
   open: boolean
@@ -28,6 +30,7 @@ export function SwitchTaskDialog({ open, onOpenChange }: SwitchTaskDialogProps) 
   const [newTaskTitle, setNewTaskTitle] = useState("")
   const [isSwitching, setIsSwitching] = useState(false)
   const { aiSuggestions, suggestionsLoading } = useTaskTitleSuggestions(open, newTaskTitle)
+  const screenshot = useScreenshotTitle(open)
   const topTemplates = getTopTemplates()
 
   useEffect(() => {
@@ -70,6 +73,13 @@ export function SwitchTaskDialog({ open, onOpenChange }: SwitchTaskDialogProps) 
           <p className="text-sm text-foreground/70">
             Current activity &quot;{currentEntry?.title}&quot; will be saved with its time. Pick a suggestion or type your own.
           </p>
+
+          <ScreenshotTitleField
+            screenshot={screenshot}
+            onPick={setNewTaskTitle}
+            selected={newTaskTitle}
+            disabled={isSwitching}
+          />
 
           {/* AI suggestions */}
           <div className="space-y-2">
