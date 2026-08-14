@@ -84,12 +84,16 @@ Log each gate you pass with a one-line reason. That line *is* the escalation rec
 | `analytics_events` volume (`/admin/events`) | Exists, business-level signal |
 | User feedback inbox (`/admin/feedback`) | Exists, pull-only |
 | Sentry error capture | **Verified working** 2026-08-13 (1,411 sessions) |
+| Daily data-integrity check ([`/api/cron/data-check`](../app/api/cron/data-check/route.ts), 13:30 UTC) | **The one push-based signal.** Runs 015's repair view and reports to Sentry + a red cron log when it finds anything |
 | **Alert routing (anything that pages you)** | **Not configured in-repo** — unverifiable from code; check Sentry's alert rules directly |
 | **Uptime / synthetic check** | **Does not exist** |
 | **Health endpoint** | **Does not exist** |
 | **On-call rotation, status page** | **Do not exist** |
 
-Detection today is **100% pull-based**: someone opens a dashboard, or a user complains.
+Detection is **almost entirely pull-based**: someone opens a dashboard, or a user
+complains. The single exception is the daily data-integrity check, which pushes a Sentry
+issue when it finds corrupt rows. Nothing else reaches out to you — there is no uptime
+monitor, no health endpoint, and no alert on error *rate*.
 
 > ⚠️ **[`docs/MONITORING.md`](MONITORING.md) is aspirational, and partly wrong.** It is a
 > wish list, not a description of production. [Line 41](MONITORING.md#L41) tells you to set
@@ -427,7 +431,7 @@ Not a to-do list — these are the assumptions this runbook explicitly does **no
 
 1. **Handled errors never reach Sentry.** `Sentry.captureException` appears exactly once in the entire codebase — [`app/global-error.tsx:16`](../app/global-error.tsx#L16), a client-side boundary. **Zero API routes report to Sentry.** Every AI failure, Supabase write failure, and auth-callback failure is a `console.error` visible only in Vercel Runtime Logs. There is no error rate, no trend, no grouping, no deduplication for this app's actual failure modes. A total Gemini outage produces **zero Sentry issues**.
 
-2. **Cron failure is undetectable in the common case.** [`cron/push/route.ts:30`](../app/api/cron/push/route.ts#L30) destructures `data` without checking `error`, so a failed Supabase query yields `subs = null` → early return `{sent: 0}` → **HTTP 200, cron shows green**. Push-send failures are swallowed except 404/410. The daily push can be 100% broken with every signal reading green. No delivery metric, no dead-man's-switch.
+2. ~~**Cron failure is undetectable in the common case.**~~ **Fixed 2026-08-14.** The push route previously discarded Supabase query errors, so a failed read returned `{sent: 0}` with HTTP 200 — a fully broken run showing green. It now surfaces query errors as 500, counts failures, tracks 404/410 pruning separately, and returns `{sent, failed, pruned, subscriptions}` so a zero can be interpreted without a separate SQL query. **Still absent: a dead-man's-switch.** A cron that never fires at all produces no signal, because silence is also what success looks like.
 
 3. **Sentry disables itself silently with no DSN.** `enabled: !!process.env.NEXT_PUBLIC_SENTRY_DSN` in all three configs. No warning, build succeeds, app runs normally. **A quiet Sentry would be indistinguishable from a healthy one.** This is a live *risk*, not a live *fault* — Sentry was verified working on 2026-08-13. Check the project's last-received-event timestamp, never the emptiness of the issue list. Note also that `SENTRY_AUTH_TOKEN` is not set, so no release is created and **source maps are never uploaded** — stack traces arrive minified.
 
@@ -445,6 +449,8 @@ Not a to-do list — these are the assumptions this runbook explicitly does **no
 
 10. **Supabase is three failure domains in one vendor** — database, auth, *and* the entire authorization layer via RLS. No documented backup/PITR policy exists in this repo.
 
+11. **A permanently red CI gate detects nothing.** The release gate failed on `main` from 2026-07-29 to 2026-08-14 on a single impossible E2E assertion. Every push in that window ran a gate that could not fail any louder than it already was, so a real regression would have been indistinguishable from the standing failure. Treat a red gate as an incident in its own right, not as background noise.
+
 ---
 
 ## Open follow-ups
@@ -453,12 +459,12 @@ Found while writing this runbook, verified, not fixed. Each needs its own issue.
 
 | # | Finding | Sev |
 |---|---------|-----|
-| 1 | **`CRON_SECRET` fails open.** [`cron/push/route.ts:12-13`](../app/api/cron/push/route.ts#L12-L13) reads `if (secret && ...)`. If the var is unset, the guard is skipped entirely and an unauthenticated `GET` runs a **service-role** handler (RLS bypassed) that can blast every subscriber and leaks a subscription count. The route's own comment states the opposite intent. Fix: return 401 when `secret` is absent. *(The variable is set in production and the guard was verified returning 401 on 2026-08-13, so this is latent, not exploitable today — but it fails in the wrong direction.)* | SEV1 latent |
+| 1 | ✅ **RESOLVED 2026-08-14.** `CRON_SECRET` failed open — `if (secret && ...)` meant an unset variable skipped authentication entirely, letting an anonymous GET reach the service-role handler with RLS bypassed. Now returns 401 when the secret is absent, with a regression test verified failing against the old code. | — |
 | 2 | ✅ **RESOLVED 2026-08-13.** `analytics_events` accepted forged attribution — [`009:29-31`](../migrations/009_add_analytics_events.sql#L29-L31) was `WITH CHECK (true)` with a caller-supplied `user_id`. Closed by [migration 018](../migrations/018_analytics_events_attribution.sql) and verified by live probe: anonymous insert with a foreign `user_id` now rejects with `42501`, while `user_id IS NULL` telemetry still returns 201. | — |
-| 3 | **`/api/summary:58` still has the pre-`dc50cc2` bug.** [Line 58](../app/api/summary/route.ts#L58) uses bare `Date.now()` for open entries and never imports `resolveEntryEnd`. Harmless *only* because nothing calls the route — wiring it up reintroduces the inflation bug. Fix or delete the route. | SEV3 latent |
-| 4 | **`time_entries` has no CHECK constraints and no unique index on `(user_id, date)`.** Every duration invariant lives in browser TypeScript over an anon key; "one clock-in per day" is a non-atomic SELECT-then-INSERT. The DB enforces ownership but not validity. Fix: `CHECK (clock_out IS NULL OR clock_out > clock_in)`, a bounded-duration CHECK, and a unique index — converting silent corruption into a loud write failure Sentry already captures. | SEV1 class |
-| 5 | **Delete the force-push rollback** from [`RELEASE_STRATEGY.md:150-151`](RELEASE_STRATEGY.md#L150-L151). | — |
-| 6 | **Fix the DSN variable name** in [`MONITORING.md:41`](MONITORING.md#L41), and audit the rest of that file against reality. | — |
-| 7 | **Make `time_entry_repair_candidates` a scheduled check** that alerts when count > 0. Its correctness is already proven — it sized and executed the real repair. Highest-value single detection improvement available. | — |
-| 8 | **`/admin` throws on token refresh.** `COMPANION-9` / `COMPANION-8` in Sentry: *"Cookies can only be modified in a Server Action or Route Handler."* [`lib/server/auth.ts:16-18`](../lib/server/auth.ts#L16-L18) calls `cookieStore.set()` from `setAll`, but [`app/admin/(panel)/layout.tsx:13`](../app/admin/(panel)/layout.tsx#L13) invokes it from a Server Component. When an admin's token needs refreshing mid-render, the layout throws and `/admin` 500s. There is no `middleware.ts` to refresh sessions first. Fix: wrap the `set` loop in `try/catch` — the documented Supabase pattern. | SEV3 |
+| 3 | ✅ **RESOLVED 2026-08-14.** `/api/summary` measured open entries with bare `Date.now()` (the bug `dc50cc2` fixed elsewhere) and authenticated with `getSession()` rather than `getUser()`. Now uses `resolveEntryEnd` and the shared `getAuthenticatedUser()`. Kept rather than deleted — it is documented API surface and this runbook's liveness probe. | — |
+| 4 | ✅ **RESOLVED 2026-08-14.** `time_entries` had no CHECK constraints. [Migration 019](../migrations/019_time_entry_validity_constraints.sql) adds three, bounding **worked** time (elapsed minus breaks) rather than elapsed — production holds legitimate sessions spanning 29.8h with a ~19.8h unended break. Verified in production: an invalid write now raises `23514`. The unique index on `(user_id, date)` came from [migration 017](../migrations/017_one_time_entry_per_day.sql). | — |
+| 5 | ✅ **RESOLVED 2026-08-14.** The force-push rollback is gone from `RELEASE_STRATEGY.md`, replaced with Vercel instant-rollback plus a revert PR, and the danger is called out explicitly so it is not reintroduced. | — |
+| 6 | ✅ **RESOLVED 2026-08-14.** `MONITORING.md` now reads `NEXT_PUBLIC_SENTRY_DSN`, carries a banner marking the file aspirational, and matches production's 0.1 trace rate. | — |
+| 7 | ✅ **RESOLVED 2026-08-14.** [`/api/cron/data-check`](../app/api/cron/data-check/route.ts) runs 015's repair view daily at 13:30 UTC and reports findings two ways: a Sentry issue (`error` level when an abandoned open session is present, `warning` when candidates are merely over the configured cap) and a non-200 so the Vercel cron log turns red. Silence means clean. | — |
+| 8 | ✅ **RESOLVED 2026-08-14.** `/admin` threw on token refresh (Sentry `COMPANION-8/9`) because Supabase writes refreshed cookies from a Server Component render, which Next.js forbids. Wrapped per the documented Supabase pattern. | — |
 | 9 | **Add `SENTRY_AUTH_TOKEN`** to Vercel. Confirmed absent in the build log; without it no release is created and **source maps are never uploaded**, so every stack trace arrives minified. | — |
