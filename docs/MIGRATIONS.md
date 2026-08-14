@@ -118,6 +118,31 @@ for the same user and day, listing the worst offenders instead of guessing which
 row to remove. Resolve those by hand and re-run. On a clean table it is a no-op
 on re-run.
 
+### `018_analytics_events_attribution.sql`
+
+Replaces `009`'s `WITH CHECK (true)` INSERT policy on `analytics_events`, which
+let any caller holding the public anon key attribute events to any `user_id`.
+The new policy is `user_id IS NULL OR auth.uid() = user_id`: unattributed
+telemetry stays open (the pre-confirmation signup case), but an attributed row
+must match the caller. Applied and verified in production 2026-08-13.
+
+### `019_time_entry_validity_constraints.sql`
+
+Adds three CHECK constraints to `time_entries`, which previously had none — a
+closed session must end after it starts, **worked** time (elapsed minus breaks)
+may not exceed 24 hours, and `break_minutes` may not be negative. Worked rather
+than elapsed is deliberate: a session with a long unended break legitimately
+spans more than a day of wall clock while the worked total stays normal, and
+production data contains exactly that. Until now every duration
+invariant lived in browser TypeScript while writes went straight to PostgREST
+with the anon key, so the database enforced ownership but not validity. This is
+the class behind `015`.
+
+Like `017`, it **aborts with an error** listing the offending rows rather than
+modifying data. Repair those first (`015` is the precedent), then re-run.
+Idempotent on clean data; the file carries a commented preview query, a
+rollback, and a post-check.
+
 ## One-off Repairs
 
 `015_repair_inflated_time_entries.sql` is **not** a schema migration and is not
