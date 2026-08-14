@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/use-toast"
 import { Play } from "lucide-react"
+import { useScreenshotTitle } from "./use-screenshot-title"
+import { ScreenshotTitleField } from "./screenshot-title-field"
 
 interface ClockInCardProps {
   isAtHardCap: boolean
@@ -42,6 +44,10 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
   const [templateName, setTemplateName] = useState("")
   const [isClockingIn, setIsClockingIn] = useState(false)
 
+  // This card is always mounted, so there is no open/close cycle to reset it —
+  // it is cleared explicitly once the session it fed has started.
+  const screenshot = useScreenshotTitle(true)
+
   const topTemplates = getTopTemplates()
 
   // Handle clockIn with workTitle and save template
@@ -67,6 +73,7 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
       .then(() => {
         setWorkTitle("")
         setSelectedCategory("none")
+        screenshot.clear()
         toast({
           title: "Clocked in",
           description: `Started "${title}".`,
@@ -179,6 +186,13 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
             className="text-base h-12 sm:h-10 w-full max-w-full"
           />
         </div>
+
+        <ScreenshotTitleField
+          screenshot={screenshot}
+          onPick={setWorkTitle}
+          selected={workTitle}
+          disabled={isClockingIn}
+        />
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">

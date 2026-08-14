@@ -1,12 +1,16 @@
 # API Reference
 
-The app exposes four API routes under `app/api/`. All routes are dynamic (`force-dynamic`) and, except where noted, require an authenticated Supabase session cookie.
+The app exposes these API routes under `app/api/`. All routes are dynamic (`force-dynamic`) and, except where noted, require an authenticated Supabase session cookie.
 
 | Route | Method | Auth | Rate limit | Purpose |
 |---|---|---|---|---|
 | `/api/assistant` | POST | Session cookie | 20/min/user | Streaming AI chat with tool calling |
 | `/api/suggest-task-titles` | POST | Session cookie | 20/min/user | AI task title suggestions |
+| `/api/extract-task-title` | POST | Session cookie | 10/min/user | Task titles read from a pasted screenshot |
+| `/api/insights` | POST | Session cookie | 20/min/user | AI weekly insight from timesheet metrics |
 | `/api/summary` | GET | Session cookie | — | Counts and today's timesheet totals |
+| `/api/push/subscribe` | POST | Session cookie | — | Register a Web Push subscription |
+| `/api/cron/push` | GET | `CRON_SECRET` bearer | — | Daily due/overdue task reminder (Vercel Cron) |
 | `/api/seed-test-data` | POST | Bearer token | — | Seed test data (development only) |
 
 Rate limiting is a per-user sliding window implemented in `lib/server/rate-limit.ts`. Exceeding it returns `429` with a `Retry-After` header.
@@ -102,6 +106,49 @@ Requests are limited to 32 KB; `draft` is limited to 200 characters and each tit
 - Always returns a `suggestions: string[]` array (each ≤100 chars, max 5 items).
 - If `GEMINI_API_KEY` is not configured, returns `200` with `{ "suggestions": [], "error": "GEMINI_API_KEY not configured" }` so the UI degrades gracefully.
 - `502` with empty suggestions on upstream Gemini errors; `500` on unexpected failures.
+
+---
+
+## POST `/api/extract-task-title`
+
+Reads a screenshot of a task — an issue tracker, a board card, a chat message assigning work — and returns timesheet titles for it (Gemini `gemini-2.5-flash`, multimodal). Max duration 30s.
+
+Used by the paste-a-screenshot control on the clock-in card, the dashboard clock-in dialog, and the "Log new task" dialog. The suggestions only prefill the title field; the user still confirms, and the entry is written client-side through the store under their own session. Nothing here writes to the database.
+
+**Auth:** authenticated session required (`401` otherwise).
+**Rate limit:** 10 requests/min per user — half the text routes, because every call ships an image and costs more.
+
+### Request body
+
+```json
+{
+  "image": { "mimeType": "image/jpeg", "data": "<base64, no data-URL prefix>" },
+  "recentTitles": ["Code review", "Sprint planning"]
+}
+```
+
+- `image.mimeType` (required): `image/jpeg`, `image/png`, or `image/webp`. SVG is refused — it is markup, not a raster image.
+- `image.data` (required): base64 with the `data:...;base64,` prefix already stripped. Capped at ~2.1M characters (~1.5 MB decoded); the whole body is capped at 2.4 MB and returns `413` beyond that.
+- `recentTitles` (optional): up to 20 recent titles, used only to match the user's phrasing style.
+
+Clients should downscale before sending. `lib/screenshot.ts` fits the image to a 1920px long edge and re-encodes as JPEG, which puts a typical retina capture in the low hundreds of KB while keeping issue keys and card titles legible.
+
+### Response
+
+```json
+{
+  "summary": "Linear issue GC-142 about break panel contrast",
+  "suggestions": ["Fix Break Panel Contrast", "Break Panel A11y Pass"]
+}
+```
+
+- `summary` names what the model actually saw, so the user can tell it read the right thing before accepting a title.
+- `suggestions` holds 0–5 titles (each ≤100 chars). An empty array with a `summary` means no task was recognisable — not an error.
+- If `GEMINI_API_KEY` is not configured, returns `200` with empty suggestions and an `error` string, matching `/api/suggest-task-titles`.
+- `400` names the specific problem (`"Image is too large"`, base64 format, unsupported mime type).
+- `502` on upstream Gemini errors, `504` on timeout, `500` otherwise.
+
+**The image is never stored and never logged.** Screenshots routinely carry client names and ticket contents; failures log the status and error only. The image is sent to Google's Gemini API for the single call and discarded — the UI says so at the point of use.
 
 ---
 

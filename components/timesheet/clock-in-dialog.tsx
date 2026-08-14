@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import { useTaskTitleSuggestions } from "./use-task-title-suggestions"
+import { useScreenshotTitle } from "./use-screenshot-title"
+import { ScreenshotTitleField } from "./screenshot-title-field"
 
 interface ClockInDialogProps {
   open: boolean
@@ -33,6 +35,7 @@ export function ClockInDialog({ open, onOpenChange, isAtHardCap = false }: Clock
   const [category, setCategory] = useState("none")
   const [submitting, setSubmitting] = useState(false)
   const { aiSuggestions, suggestionsLoading } = useTaskTitleSuggestions(open, title)
+  const screenshot = useScreenshotTitle(open)
   const recentTemplates = getTopTemplates().slice(0, 5)
   const hasClockedInToday = getTodayTimeEntries().length > 0
 
@@ -89,6 +92,13 @@ export function ClockInDialog({ open, onOpenChange, isAtHardCap = false }: Clock
               {unavailableReason}
             </p>
           )}
+
+          <ScreenshotTitleField
+            screenshot={screenshot}
+            onPick={setTitle}
+            selected={title}
+            disabled={submitting || !!unavailableReason}
+          />
 
           {(aiSuggestions.length > 0 || suggestionsLoading) && (
             <div className="space-y-2">

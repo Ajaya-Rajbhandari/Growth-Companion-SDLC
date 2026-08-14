@@ -16,6 +16,36 @@ export const SuggestTaskTitlesResponseSchema = z.object({
 
 export type SuggestTaskTitlesResponse = z.infer<typeof SuggestTaskTitlesResponseSchema>
 
+// /api/extract-task-title request
+//
+// The client downscales and re-encodes to JPEG before sending (lib/screenshot.ts),
+// so the only mime type in normal use is image/jpeg. PNG and WebP stay accepted so
+// a caller that skips that step still works. SVG is deliberately absent: it is
+// markup rather than a raster image, and Gemini does not accept it either.
+const MAX_IMAGE_BASE64_CHARS = 2_100_000 // ~1.5 MB decoded
+
+export const ExtractTaskTitleRequestSchema = z.object({
+  image: z.object({
+    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    data: z
+      .string()
+      .min(1, "Image data is required")
+      .max(MAX_IMAGE_BASE64_CHARS, "Image is too large")
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/, "Image data must be base64 without a data-URL prefix"),
+  }),
+  recentTitles: z.array(z.string().min(1).max(100)).max(20).optional().default([]),
+})
+
+export type ExtractTaskTitleRequest = z.infer<typeof ExtractTaskTitleRequestSchema>
+
+export const ExtractTaskTitleResponseSchema = z.object({
+  suggestions: z.array(z.string()),
+  summary: z.string().optional(),
+  error: z.string().optional(),
+})
+
+export type ExtractTaskTitleResponse = z.infer<typeof ExtractTaskTitleResponseSchema>
+
 // /api/assistant request
 export const ChatMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system"]),
