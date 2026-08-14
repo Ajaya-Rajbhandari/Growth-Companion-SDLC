@@ -150,16 +150,19 @@ export function getBreakTypeLabel(type?: "short" | "lunch" | "custom", title?: s
   }
 }
 
+// The -400 text colours only ever cleared contrast against a dark card; on the
+// light theme they measured 2.07:1 (short), 1.47:1 (lunch) and 2.14:1 (custom).
+// Each type now carries an explicit light value as well, all >= 4.5:1.
 export function getBreakTypeBadgeColor(type?: "short" | "lunch" | "custom"): string {
   switch (type) {
     case "short":
-      return "bg-blue-500/20 text-blue-400 border-blue-500/30"
+      return "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30"
     case "lunch":
-      return "bg-amber-500/20 text-amber-400 border-amber-500/30"
+      return "bg-amber-500/20 text-amber-800 dark:text-amber-400 border-amber-500/30"
     case "custom":
-      return "bg-purple-500/20 text-purple-400 border-purple-500/30"
+      return "bg-purple-500/20 text-purple-800 dark:text-purple-400 border-purple-500/30"
     default:
-      return "bg-muted text-foreground/70 border-border"
+      return "bg-muted text-foreground border-border"
   }
 }
 

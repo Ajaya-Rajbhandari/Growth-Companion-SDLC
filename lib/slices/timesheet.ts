@@ -33,6 +33,7 @@ export interface TimesheetSlice {
   updateEntryNotes: (id: string, notes: string) => Promise<void>
   updateBreakTitle: (entryId: string, breakId: string, title: string) => Promise<void>
   deleteTimeEntry: (id: string) => Promise<void>
+  restoreTimeEntry: (entry: TimeEntry) => Promise<void>
   getTimesheetStatus: () => {
     isWorking: boolean
     isOnBreak: boolean
@@ -73,7 +74,24 @@ export interface TimesheetSlice {
   deleteTimeCategory: (id: string) => Promise<void>
 }
 
-export const createTimesheetSlice: StateCreator<
+// Session-lifecycle writes are serialised per operation. A second call made while
+// the first is still in flight joins the existing promise rather than starting a
+// second write, so the caller still sees the real outcome and the DB sees one
+// mutation. Keyed by operation name — there is a single signed-in user per client.
+const inFlight = new Map<string, Promise<unknown>>()
+
+function withLatch<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const existing = inFlight.get(key) as Promise<T> | undefined
+  if (existing) return existing
+
+  const promise = run().finally(() => {
+    inFlight.delete(key)
+  })
+  inFlight.set(key, promise)
+  return promise
+}
+
+const createBaseTimesheetSlice: StateCreator<
   AppState,
   [["zustand/persist", unknown]],
   [],
@@ -448,6 +466,53 @@ export const createTimesheetSlice: StateCreator<
       timeEntries: state.timeEntries.filter((e) => e.id !== id),
       currentEntry: state.currentEntry?.id === id ? null : state.currentEntry,
       activeBreak: currentEntry?.id === id ? null : state.activeBreak,
+    }))
+  },
+  // Re-inserts a deleted entry under its original id so the "Undo" on the delete
+  // toast restores the real record rather than a lookalike. Every field of a time
+  // entry lives on this one row (breaks and subtasks are JSON columns), so the
+  // round trip is lossless.
+  restoreTimeEntry: async (entry) => {
+    const { user } = get()
+    if (!user) throw new Error("You must be signed in to restore an entry.")
+
+    const { data, error } = await supabase
+      .from("time_entries")
+      .insert({
+        id: entry.id,
+        user_id: user.id,
+        date: entry.date,
+        clock_in: entry.clockIn,
+        clock_out: entry.clockOut ?? null,
+        break_minutes: entry.breakMinutes,
+        breaks: entry.breaks || [],
+        notes: entry.notes ?? null,
+        title: entry.title ?? null,
+        template_id: entry.templateId ?? null,
+        category: entry.category ?? null,
+        subtasks: entry.subtasks ?? [],
+      })
+      .select()
+      .single()
+
+    if (error) {
+      // 23505 = unique violation. The only way to hit it here is if a new entry was
+      // started for the same day after the delete, which the once-per-day index in
+      // migration 017 rejects. Say so plainly rather than surfacing the raw error.
+      if ((error as { code?: string }).code === "23505") {
+        throw new Error("You have already started another session for that day, so this entry can't be restored.")
+      }
+      throw new Error(error.message || "Failed to restore entry.")
+    }
+    if (!data) return
+
+    const restored = mapTimeEntryFromDb(data as DbTimeEntry)
+    set((state) => ({
+      timeEntries: [restored, ...state.timeEntries.filter((e) => e.id !== restored.id)].sort(
+        (a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime(),
+      ),
+      // An entry with no clock-out is the open session; restoring it makes it current again.
+      currentEntry: restored.clockOut ? state.currentEntry : restored,
     }))
   },
   getTimesheetStatus: () => {
@@ -883,3 +948,25 @@ export const createTimesheetSlice: StateCreator<
     }))
   },
 })
+
+// The session-lifecycle mutations are wrapped once, here, rather than each guarding
+// itself — a call site that forgets is exactly how the double-submit bug got in.
+export const createTimesheetSlice: StateCreator<
+  AppState,
+  [["zustand/persist", unknown]],
+  [],
+  TimesheetSlice
+> = (set, get, store) => {
+  const base = createBaseTimesheetSlice(set, get, store)
+
+  return {
+    ...base,
+    clockIn: (title?: string, category?: string) => withLatch("clockIn", () => base.clockIn(title, category)),
+    clockOut: () => withLatch("clockOut", () => base.clockOut()),
+    switchTask: (newTitle: string, category?: string) =>
+      withLatch("switchTask", () => base.switchTask(newTitle, category)),
+    startBreak: (durationMinutes?: number, breakType?: "short" | "lunch" | "custom" | "fixed", title?: string) =>
+      withLatch("startBreak", () => base.startBreak(durationMinutes, breakType, title)),
+    endBreak: () => withLatch("endBreak", () => base.endBreak()),
+  }
+}

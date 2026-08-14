@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { calculateDuration, formatTime, formatTimeRange, getBreakTypeBadgeColor, getBreakTypeLabel, getSessionHeadline } from "./helpers"
 import { SessionTasks } from "./session-tasks"
@@ -16,7 +17,8 @@ interface MobileEntryCardProps {
   timeCategories: TimeCategory[]
   onOpenNotes: (entry: TimeEntry) => void
   onClockOut: () => void
-  onDelete: (entryId: string) => void
+  // Takes the whole entry, not just its id, so the confirmation can name the record.
+  onDelete: (entry: TimeEntry) => void
 }
 
 // Mobile card layout for a single time entry (shared by daily and weekly views).
@@ -40,8 +42,11 @@ export function MobileEntryCard({
   const breakMinutesCount = Math.round(breakDuration / (1000 * 60))
 
   return (
-    <Card className={cn("bg-card border-border", isCurrentEntry && "bg-primary/5 border-primary/20")}>
-      <CardContent className="p-3 space-y-2">
+    <Card
+      density="compact"
+      className={cn("bg-card border-border", isCurrentEntry && "bg-primary/5 border-primary/20")}
+    >
+      <CardContent className="space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -58,7 +63,7 @@ export function MobileEntryCard({
                 return category ? (
                   <Badge
                     variant="outline"
-                    className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                    className="text-xs px-1.5 py-0 flex-shrink-0"
                     style={{
                       borderColor: category.color,
                       color: category.color,
@@ -79,21 +84,26 @@ export function MobileEntryCard({
                 {entry.clockOut ? (
                   formatTime(entry.clockOut)
                 ) : (
-                  <Badge variant="secondary" className="bg-primary/20 text-primary border-primary/30 text-[10px]">
+                  <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/30 text-xs">
                     In Progress
                   </Badge>
                 )}
               </div>
               <div>
                 <span className="font-medium">Duration:</span>{" "}
-                {isCurrentEntry ? (
-                  <span className="text-primary font-semibold">
-                    {String(elapsedTime.hours).padStart(2, "0")}h{" "}
-                    {String(elapsedTime.minutes).padStart(2, "0")}m
-                  </span>
-                ) : (
-                  `${String(duration.hours).padStart(2, "0")}h ${String(duration.minutes).padStart(2, "0")}m`
-                )}
+                {/* The desktop table already sets font-mono here. Without it the live
+                    entry's duration is proportional-width and wobbles every minute
+                    while the static rows beside it hold still. */}
+                <span className="font-mono tabular-nums">
+                  {isCurrentEntry ? (
+                    <span className="text-primary font-semibold">
+                      {String(elapsedTime.hours).padStart(2, "0")}h{" "}
+                      {String(elapsedTime.minutes).padStart(2, "0")}m
+                    </span>
+                  ) : (
+                    `${String(duration.hours).padStart(2, "0")}h ${String(duration.minutes).padStart(2, "0")}m`
+                  )}
+                </span>
               </div>
               <div>
                 <span className="font-medium">Breaks:</span>{" "}
@@ -114,7 +124,7 @@ export function MobileEntryCard({
                     <div key={breakPeriod.id} className="flex items-center gap-2 text-xs">
                       <Badge
                         variant="outline"
-                        className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)}`}
+                        className={`text-xs px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)}`}
                       >
                         {getBreakTypeLabel(breakPeriod.type, breakPeriod.title)}
                       </Badge>
@@ -135,8 +145,15 @@ export function MobileEntryCard({
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="min-w-[44px] min-h-[44px]">
-                ⋯
+              {/* Was a bare "⋯" character, which screen readers announce literally
+                  as "midline horizontal ellipsis". */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="min-w-[44px] min-h-[44px]"
+                aria-label={`Actions for ${getSessionHeadline(entry) || "this entry"}`}
+              >
+                <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -149,7 +166,7 @@ export function MobileEntryCard({
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
-                onClick={() => onDelete(entry.id)}
+                onClick={() => onDelete(entry)}
                 className="text-destructive"
               >
                 Delete

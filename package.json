@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint -- --quiet && npm test && npm run build && git diff --check",
     "check:full": "npm run check && npm run test:e2e",
+    "check:contrast": "node scripts/check-contrast.mjs",
     "seed": "tsx scripts/seed-test-data.ts",
     "generate-icons": "node scripts/generate-icons.js"
   },

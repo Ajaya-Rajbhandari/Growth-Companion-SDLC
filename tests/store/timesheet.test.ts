@@ -146,6 +146,129 @@ describe("Timesheet Store", () => {
 
       await expect(clockIn("Test Task")).rejects.toThrow()
     })
+
+    // The store is pessimistic: state is written only after Supabase confirms, so
+    // every `disabled` check in the UI is stale for the whole round trip. Two taps
+    // must still produce one session.
+    it("should collapse concurrent clock-ins into a single write", async () => {
+      const { clockIn } = useAppStore.getState()
+      const { supabase } = await import("@/lib/supabase")
+
+      let resolveInsert: (value: unknown) => void = () => {}
+      const pendingInsert = new Promise((resolve) => {
+        resolveInsert = resolve
+      })
+
+      const mockInsert = vi.fn(() => ({
+        select: vi.fn(() => ({
+          single: vi.fn(() => pendingInsert),
+        })),
+      }))
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
+
+      const first = clockIn("Double Tap")
+      const second = clockIn("Double Tap")
+
+      resolveInsert({
+        data: {
+          id: "entry-1",
+          date: new Date().toISOString().split("T")[0],
+          clock_in: new Date().toISOString(),
+          clock_out: null,
+          break_minutes: 0,
+          breaks: [],
+          title: "Double Tap",
+          user_id: "test-user",
+        },
+        error: null,
+      })
+
+      await Promise.all([first, second])
+
+      expect(mockInsert).toHaveBeenCalledTimes(1)
+      expect(useAppStore.getState().timeEntries).toHaveLength(1)
+    })
+
+    it("should allow a fresh clock-in once the previous one settles", async () => {
+      const { clockIn } = useAppStore.getState()
+      const { supabase } = await import("@/lib/supabase")
+
+      const mockInsert = vi.fn(() => ({
+        select: vi.fn(() => ({
+          single: vi.fn(() => ({ data: null, error: { message: "Network down" } })),
+        })),
+      }))
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
+
+      await expect(clockIn("Attempt one")).rejects.toThrow()
+      // The latch must release on failure, or a failed attempt would wedge the day.
+      await expect(clockIn("Attempt two")).rejects.toThrow()
+      expect(mockInsert).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe("restoreTimeEntry", () => {
+    const deletedEntry = {
+      id: "entry-deleted",
+      date: "2026-08-10",
+      clockIn: "2026-08-10T09:00:00.000Z",
+      clockOut: "2026-08-10T17:00:00.000Z",
+      breakMinutes: 30,
+      breaks: [],
+      title: "Sprint planning",
+      subtasks: [],
+    }
+
+    it("should re-insert a deleted entry under its original id", async () => {
+      const { restoreTimeEntry } = useAppStore.getState()
+      const { supabase } = await import("@/lib/supabase")
+
+      const mockInsert = vi.fn(() => ({
+        select: vi.fn(() => ({
+          single: vi.fn(() => ({
+            data: {
+              id: "entry-deleted",
+              date: "2026-08-10",
+              clock_in: "2026-08-10T09:00:00.000Z",
+              clock_out: "2026-08-10T17:00:00.000Z",
+              break_minutes: 30,
+              breaks: [],
+              title: "Sprint planning",
+              user_id: "test-user",
+            },
+            error: null,
+          })),
+        })),
+      }))
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
+
+      await restoreTimeEntry(deletedEntry as any)
+
+      expect(mockInsert).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "entry-deleted", title: "Sprint planning", break_minutes: 30 }),
+      )
+      const { timeEntries, currentEntry } = useAppStore.getState()
+      expect(timeEntries.map((e) => e.id)).toContain("entry-deleted")
+      // A completed entry must not be revived as the active session.
+      expect(currentEntry).toBeNull()
+    })
+
+    it("should explain a same-day collision rather than surfacing the raw error", async () => {
+      const { restoreTimeEntry } = useAppStore.getState()
+      const { supabase } = await import("@/lib/supabase")
+
+      const mockInsert = vi.fn(() => ({
+        select: vi.fn(() => ({
+          single: vi.fn(() => ({
+            data: null,
+            error: { code: "23505", message: 'duplicate key value violates unique constraint "..."' },
+          })),
+        })),
+      }))
+      ;(supabase.from as any).mockReturnValue({ insert: mockInsert, update: mockOkUpdate() })
+
+      await expect(restoreTimeEntry(deletedEntry as any)).rejects.toThrow("already started another session")
+    })
   })
 
   describe("clockOut", () => {

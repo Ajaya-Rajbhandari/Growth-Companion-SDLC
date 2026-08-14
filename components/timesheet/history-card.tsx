@@ -1,13 +1,24 @@
 "use client"
 
-import React, { useMemo } from "react"
+import React, { useMemo, useState } from "react"
 import { useAppStore, type TimeEntry } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ToastAction } from "@/components/ui/toast"
 import { cn, parseLocalDateKey } from "@/lib/utils"
 import { toast } from "@/components/ui/use-toast"
 import {
@@ -20,6 +31,7 @@ import {
   Clock,
   Download,
   FileSpreadsheet,
+  MoreHorizontal,
 } from "lucide-react"
 import {
   type ViewPeriod,
@@ -42,6 +54,17 @@ import { MonthHeatmap, YearMonthsGrid } from "./month-heatmap"
 import { exportToCSV, exportToExcel, exportToJSON } from "./export"
 import { MobileEntryCard } from "./entry-card"
 import type { SelectedBreak } from "./dialogs"
+
+// "Sprint planning · Mon, Aug 10 · 3h 12m" — enough for someone to recognise the
+// record they are about to lose, or the one they just got back.
+function describeEntry(entry: TimeEntry): string {
+  const duration = calculateDuration(entry.clockIn, entry.clockOut, entry.breakMinutes)
+  return [
+    getSessionHeadline(entry) || "Untitled session",
+    formatDate(entry.date),
+    `${duration.hours}h ${duration.minutes}m`,
+  ].join(" · ")
+}
 
 interface HistoryCardProps {
   viewPeriod: ViewPeriod
@@ -66,13 +89,17 @@ export function HistoryCard({
   onOpenNotes,
   onEditBreak,
 }: HistoryCardProps) {
-  const { currentEntry, timeCategories, deleteTimeEntry } = useAppStore(
+  const { currentEntry, timeCategories, deleteTimeEntry, restoreTimeEntry } = useAppStore(
     useShallow((state) => ({
       currentEntry: state.currentEntry,
       timeCategories: state.timeCategories,
       deleteTimeEntry: state.deleteTimeEntry,
+      restoreTimeEntry: state.restoreTimeEntry,
     })),
   )
+
+  const [pendingDelete, setPendingDelete] = useState<TimeEntry | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const groupedEntries = useMemo(() => {
     return groupEntriesByDate(filteredEntries)
@@ -113,25 +140,60 @@ export function HistoryCard({
     onSelectedDateChange(new Date())
   }
 
-  const handleDeleteEntry = (entryId: string) => {
-    deleteTimeEntry(entryId)
+  // Deleting a timesheet record is the highest-consequence action on this screen, so
+  // it takes two deliberate steps and stays recoverable afterwards: a confirmation
+  // naming the entry, then a toast that can put it back under its original id.
+  const handleDeleteEntry = (entry: TimeEntry) => {
+    setPendingDelete(entry)
+  }
+
+  const handleUndoDelete = (entry: TimeEntry) => {
+    restoreTimeEntry(entry)
       .then(() => {
+        toast({ title: "Entry restored", description: describeEntry(entry) })
+      })
+      .catch((error) => {
+        toast({
+          title: "Restore failed",
+          description: error instanceof Error ? error.message : "Unable to restore entry.",
+          variant: "destructive",
+        })
+      })
+  }
+
+  const handleConfirmDelete = () => {
+    const entry = pendingDelete
+    if (!entry) return
+
+    setIsDeleting(true)
+    deleteTimeEntry(entry.id)
+      .then(() => {
+        setPendingDelete(null)
         toast({
           title: "Entry deleted",
-          description: "Time entry removed.",
+          description: describeEntry(entry),
+          action: (
+            <ToastAction altText="Undo deleting this time entry" onClick={() => handleUndoDelete(entry)}>
+              Undo
+            </ToastAction>
+          ),
         })
       })
       .catch((error) => {
         toast({
           title: "Delete failed",
           description: error instanceof Error ? error.message : "Unable to delete entry.",
+          variant: "destructive",
         })
+      })
+      .finally(() => {
+        setIsDeleting(false)
       })
   }
 
   return (
-    <Card className="border-border bg-card w-full max-w-full overflow-hidden !px-0">
-      <CardHeader className="p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+    <Card density="compact" className="border-border bg-card w-full max-w-full overflow-hidden">
+      <CardHeader>
         <div className="space-y-1.5 sm:space-y-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <h3 className="text-sm sm:text-base font-semibold">Time History</h3>
@@ -151,7 +213,7 @@ export function HistoryCard({
               </Button>
               <div className="px-2 sm:px-4 py-2 bg-card border border-border rounded-lg text-center min-w-[100px] sm:min-w-48 flex-1 sm:flex-none max-w-full">
                 <p className="text-xs sm:text-sm font-medium text-foreground">{getPeriodLabel(selectedDate, viewPeriod)}</p>
-                <p className="text-[10px] sm:text-xs text-foreground/70 mt-1">
+                <p className="text-xs sm:text-sm text-foreground/70 mt-1">
                   {viewPeriod.charAt(0).toUpperCase() + viewPeriod.slice(1)} View
                 </p>
               </div>
@@ -219,7 +281,7 @@ export function HistoryCard({
         </div>
       </CardHeader>
 
-      <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+      <CardContent>
         {sortedDates.length === 0 ? (
           <div className="text-center py-4 text-foreground/70">
             <Clock className="size-5 sm:size-8 mx-auto mb-2 opacity-50" />
@@ -296,7 +358,7 @@ export function HistoryCard({
                                           return category ? (
                                             <Badge
                                               variant="outline"
-                                              className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                                              className="text-xs px-1.5 py-0 flex-shrink-0"
                                               style={{
                                                 borderColor: category.color,
                                                 color: category.color,
@@ -317,7 +379,7 @@ export function HistoryCard({
                                     ) : (
                                       <Badge
                                         variant="secondary"
-                                        className="bg-primary/20 text-primary border-primary/30"
+                                        className="bg-primary/10 text-primary border-primary/30"
                                       >
                                         In Progress
                                       </Badge>
@@ -344,7 +406,7 @@ export function HistoryCard({
                                             <div key={breakPeriod.id} className="flex items-center gap-2">
                                               <Badge
                                                 variant="outline"
-                                                className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
+                                                className={`text-xs px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
                                                 onClick={() => onEditBreak({ entryId: entry.id, breakId: breakPeriod.id, currentTitle: breakPeriod.title })}
                                                 title="Click to edit break title"
                                               >
@@ -370,8 +432,12 @@ export function HistoryCard({
                                   <TableCell>
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="sm">
-                                          ⋯
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          aria-label={`Actions for ${getSessionHeadline(entry) || "this entry"}`}
+                                        >
+                                          <MoreHorizontal className="size-4" />
                                         </Button>
                                       </DropdownMenuTrigger>
                                       <DropdownMenuContent align="end">
@@ -384,7 +450,7 @@ export function HistoryCard({
                                           </DropdownMenuItem>
                                         )}
                                         <DropdownMenuItem
-                                          onClick={() => handleDeleteEntry(entry.id)}
+                                          onClick={() => handleDeleteEntry(entry)}
                                           className="text-destructive"
                                         >
                                           Delete
@@ -530,7 +596,7 @@ export function HistoryCard({
                                                           return category ? (
                                                             <Badge
                                                               variant="outline"
-                                                              className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                                                              className="text-xs px-1.5 py-0 flex-shrink-0"
                                                               style={{
                                                                 borderColor: category.color,
                                                                 color: category.color,
@@ -553,7 +619,7 @@ export function HistoryCard({
                                                     ) : (
                                                       <Badge
                                                         variant="secondary"
-                                                        className="bg-primary/20 text-primary border-primary/30"
+                                                        className="bg-primary/10 text-primary border-primary/30"
                                                       >
                                                         In Progress
                                                       </Badge>
@@ -580,7 +646,7 @@ export function HistoryCard({
                                                             <div key={breakPeriod.id} className="flex items-center gap-2">
                                                               <Badge
                                                                 variant="outline"
-                                                                className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
+                                                                className={`text-xs px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
                                                                 onClick={() => onEditBreak({ entryId: entry.id, breakId: breakPeriod.id, currentTitle: breakPeriod.title })}
                                                                 title="Click to edit break title"
                                                               >
@@ -590,7 +656,7 @@ export function HistoryCard({
                                                                 {breakPeriod.title && breakPeriod.type !== "custom" ? (
                                                                   <>
                                                                     <span className="font-medium">{breakPeriod.title}</span>
-                                                                    <span className="ml-2 text-foreground/60 text-[10px]">
+                                                                    <span className="ml-2 text-foreground/60 text-xs">
                                                                       {formatTimeRange(breakPeriod.startTime, breakPeriod.endTime)}
                                                                       {null}
                                                                       {breakDuration && ` (${breakDuration.hours}h ${breakDuration.minutes}m)`}
@@ -620,8 +686,12 @@ export function HistoryCard({
                                                   <TableCell>
                                                     <DropdownMenu>
                                                       <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" size="sm">
-                                                          ⋯
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          aria-label={`Actions for ${getSessionHeadline(entry) || "this entry"}`}
+                                                        >
+                                                          <MoreHorizontal className="size-4" />
                                                         </Button>
                                                       </DropdownMenuTrigger>
                                                       <DropdownMenuContent align="end">
@@ -637,7 +707,7 @@ export function HistoryCard({
                                                           </DropdownMenuItem>
                                                         )}
                                                         <DropdownMenuItem
-                                                          onClick={() => handleDeleteEntry(entry.id)}
+                                                          onClick={() => handleDeleteEntry(entry)}
                                                           className="text-destructive"
                                                         >
                                                           Delete
@@ -691,7 +761,7 @@ export function HistoryCard({
                                                     return category ? (
                                                       <Badge
                                                         variant="outline"
-                                                        className="text-[10px] px-1.5 py-0 flex-shrink-0"
+                                                        className="text-xs px-1.5 py-0 flex-shrink-0"
                                                         style={{
                                                           borderColor: category.color,
                                                           color: category.color,
@@ -714,7 +784,7 @@ export function HistoryCard({
                                               ) : (
                                                 <Badge
                                                   variant="secondary"
-                                                  className="bg-primary/20 text-primary border-primary/30"
+                                                  className="bg-primary/10 text-primary border-primary/30"
                                                 >
                                                   In Progress
                                                 </Badge>
@@ -741,7 +811,7 @@ export function HistoryCard({
                                                       <div key={breakPeriod.id} className="flex items-center gap-2">
                                                         <Badge
                                                           variant="outline"
-                                                          className={`text-[10px] px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
+                                                          className={`text-xs px-1.5 py-0.5 ${getBreakTypeBadgeColor(breakPeriod.type)} cursor-pointer hover:opacity-80`}
                                                           onClick={() => onEditBreak({ entryId: entry.id, breakId: breakPeriod.id, currentTitle: breakPeriod.title })}
                                                           title="Click to edit break title"
                                                         >
@@ -751,7 +821,7 @@ export function HistoryCard({
                                                           {breakPeriod.title ? (
                                                             <>
                                                               <span className="font-medium">{breakPeriod.title}</span>
-                                                              <span className="ml-2 text-foreground/60 text-[10px]">
+                                                              <span className="ml-2 text-foreground/60 text-xs">
                                                                 {formatTimeRange(breakPeriod.startTime, breakPeriod.endTime)}
                                                                 {null}
                                                                 {breakDuration && ` (${breakDuration.hours}h ${breakDuration.minutes}m)`}
@@ -781,8 +851,12 @@ export function HistoryCard({
                                             <TableCell>
                                               <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
-                                                  <Button variant="ghost" size="sm">
-                                                    ⋯
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    aria-label={`Actions for ${getSessionHeadline(entry) || "this entry"}`}
+                                                  >
+                                                    <MoreHorizontal className="size-4" />
                                                   </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
@@ -798,7 +872,7 @@ export function HistoryCard({
                                                     </DropdownMenuItem>
                                                   )}
                                                   <DropdownMenuItem
-                                                    onClick={() => handleDeleteEntry(entry.id)}
+                                                    onClick={() => handleDeleteEntry(entry)}
                                                     className="text-destructive"
                                                   >
                                                     Delete
@@ -851,6 +925,40 @@ export function HistoryCard({
           </div>
         )}
       </CardContent>
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setPendingDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this time entry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete ? describeEntry(pendingDelete) : ""}
+              <span className="mt-2 block">
+                This removes the record from your timesheet. You can undo it from the confirmation
+                that follows.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Keep entry</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                // Deletion is async; let the dialog close from the resolved handler instead.
+                event.preventDefault()
+                handleConfirmDelete()
+              }}
+              disabled={isDeleting}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting…" : "Delete entry"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

@@ -14,9 +14,20 @@ export async function createServerSupabase(): Promise<SupabaseClient | null> {
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {
-        cookiesToSet.forEach(({ name, value, options }) =>
-          cookieStore.set(name, value, options)
-        )
+        // Supabase writes refreshed auth cookies here. Next.js only permits
+        // cookie writes from a Server Action or Route Handler, so the same call
+        // from a Server Component throws — which took /admin down whenever an
+        // admin's token needed refreshing mid-render (Sentry COMPANION-8/9).
+        // Ignoring it is safe: the refreshed session is still live in memory for
+        // this request, and the cookies get persisted by the next Route Handler
+        // or Server Action that runs.
+        try {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          )
+        } catch {
+          // Read-only cookie store (Server Component render). See above.
+        }
       },
     },
   })

@@ -11,8 +11,13 @@ import { PWAInstallPrompt } from "@/components/pwa-install-prompt"
 import { PWARegister } from "@/components/pwa-register"
 import "./globals.css"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
+// These were assigned to unused variables, so both families were downloaded on
+// every page load and then discarded: `font-sans` fell back to the system stack
+// and `font-mono` — which carries every duration and clock time on the timesheet
+// — fell back to the OS default. Exposing them as CSS variables and declaring
+// those variables in globals.css is what actually applies them.
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans", display: "swap" })
+const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" })
 
 export const metadata: Metadata = {
   title: "Companion - Personal Assistant",
@@ -63,7 +68,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased">
         <ErrorHandler />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>

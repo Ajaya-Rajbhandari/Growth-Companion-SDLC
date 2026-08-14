@@ -19,7 +19,10 @@ export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["**/*.{js,jsx,ts,tsx}"],
+    // .mjs is included so standalone Node scripts (scripts/*.mjs) and this config
+    // itself are linted with the Node globals rather than falling back to the bare
+    // recommended set, where `console` and `process` read as undefined.
+    files: ["**/*.{js,jsx,mjs,cjs,ts,tsx}"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",

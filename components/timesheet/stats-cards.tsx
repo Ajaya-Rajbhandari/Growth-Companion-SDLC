@@ -68,12 +68,12 @@ export function StatsCards({ workStats, filteredEntries }: StatsCardsProps) {
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 w-full max-w-full">
-        <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+        <Card density="compact" className="bg-card border-border w-full max-w-full overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">Today</CardTitle>
             <Calendar className="size-4 sm:size-5 text-primary flex-shrink-0" />
           </CardHeader>
-          <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+          <CardContent>
             <div className="text-xl sm:text-2xl font-bold text-foreground">{todayHours.toFixed(1)}h</div>
             <p className="text-xs text-foreground/70 mt-1">{todayEntries.length} session(s)</p>
             <p className="text-xs text-foreground/70 mt-1">
@@ -83,16 +83,16 @@ export function StatsCards({ workStats, filteredEntries }: StatsCardsProps) {
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 p-3 sm:p-4 md:p-5 !px-3 sm:!px-4 md:!px-5">
+        <Card density="compact" className="bg-card border-border w-full max-w-full overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">This Week</CardTitle>
             <Timer className="size-4 sm:size-5 text-chart-2 flex-shrink-0" />
           </CardHeader>
-          <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+          <CardContent>
             <div className="text-xl sm:text-2xl font-bold text-foreground">{weeklyHours.toFixed(1)}h</div>
             <p className="text-xs text-foreground/70 mt-1">{thisWeekEntries.length} session(s)</p>
             {workStats.weeklyCatchUpMinutes > 0 ? (
-              <p className="text-xs text-amber-500 mt-1">
+              <p className="text-xs text-amber-700 dark:text-amber-500 mt-1">
                 Catch-up available: {formatMinutes(workStats.weeklyCatchUpMinutes)}
               </p>
             ) : (
@@ -101,23 +101,23 @@ export function StatsCards({ workStats, filteredEntries }: StatsCardsProps) {
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 p-3 sm:p-4 md:p-5 !px-3 sm:!px-4 md:!px-5">
+        <Card density="compact" className="bg-card border-border w-full max-w-full overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">Period Hours</CardTitle>
             <CalendarRange className="size-4 sm:size-5 text-chart-3 flex-shrink-0" />
           </CardHeader>
-          <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+          <CardContent>
             <div className="text-xl sm:text-2xl font-bold text-foreground">{periodHours.toFixed(1)}h</div>
             <p className="text-xs text-foreground/70 mt-1">{filteredEntries.length} session(s)</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 p-3 sm:p-4 md:p-5 !px-3 sm:!px-4 md:!px-5">
+        <Card density="compact" className="bg-card border-border w-full max-w-full overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">Total Breaks</CardTitle>
             <Coffee className="size-4 sm:size-5 text-chart-4 flex-shrink-0" />
           </CardHeader>
-          <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+          <CardContent>
             <div className="text-xl sm:text-2xl font-bold text-foreground">{periodBreakMinutes}m</div>
             <p className="text-xs text-foreground/70 mt-1">
               {Math.floor(periodBreakMinutes / 60)}h {periodBreakMinutes % 60}m total
@@ -127,12 +127,12 @@ export function StatsCards({ workStats, filteredEntries }: StatsCardsProps) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 w-full max-w-full">
-        <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+        <Card density="compact" className="bg-card border-border w-full max-w-full overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">Weekly Summary</CardTitle>
             <Timer className="size-4 sm:size-5 text-primary flex-shrink-0" />
           </CardHeader>
-          <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+          <CardContent>
             <div className="text-xl sm:text-2xl font-bold text-foreground">{activeDaysWeek} day(s)</div>
             <p className="text-xs text-foreground/70 mt-1">
               {weeklyHours.toFixed(1)}h, {weeklyBreakMinutes}m breaks
@@ -140,12 +140,12 @@ export function StatsCards({ workStats, filteredEntries }: StatsCardsProps) {
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border w-full max-w-full overflow-hidden !px-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+        <Card density="compact" className="bg-card border-border w-full max-w-full overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs sm:text-sm font-medium text-foreground/70">Work Streak</CardTitle>
             <CalendarDays className="size-4 sm:size-5 text-chart-2 flex-shrink-0" />
           </CardHeader>
-          <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+          <CardContent>
             <div className="text-xl sm:text-2xl font-bold text-foreground">{streakDays} day(s)</div>
             <p className="text-xs text-foreground/70 mt-1">
               {streakDays > 0 ? "Keep it going!" : "Log time today to start"}

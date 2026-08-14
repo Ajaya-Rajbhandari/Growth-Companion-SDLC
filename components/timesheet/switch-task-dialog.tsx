@@ -26,6 +26,7 @@ export function SwitchTaskDialog({ open, onOpenChange }: SwitchTaskDialogProps) 
   )
 
   const [newTaskTitle, setNewTaskTitle] = useState("")
+  const [isSwitching, setIsSwitching] = useState(false)
   const { aiSuggestions, suggestionsLoading } = useTaskTitleSuggestions(open, newTaskTitle)
   const topTemplates = getTopTemplates()
 
@@ -35,22 +36,27 @@ export function SwitchTaskDialog({ open, onOpenChange }: SwitchTaskDialogProps) 
 
   const handleSwitchTask = async () => {
     const title = newTaskTitle.trim()
-    if (title) {
-      try {
-        await switchTask(title)
-        onOpenChange(false)
-        setNewTaskTitle("")
-        toast({
-          title: "Task switched",
-          description: `Now working on "${title}".`,
-        })
-      } catch (error) {
-        toast({
-          title: "Switch failed",
-          description: error instanceof Error ? error.message : "Unable to switch task.",
-          variant: "destructive",
-        })
-      }
+    // Switching closes the current task and opens a new one; a double submit would
+    // log two segments. The button's own `disabled` only tracks the text field.
+    if (!title || isSwitching) return
+
+    setIsSwitching(true)
+    try {
+      await switchTask(title)
+      onOpenChange(false)
+      setNewTaskTitle("")
+      toast({
+        title: "Task switched",
+        description: `Now working on "${title}".`,
+      })
+    } catch (error) {
+      toast({
+        title: "Switch failed",
+        description: error instanceof Error ? error.message : "Unable to switch task.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSwitching(false)
     }
   }
 
@@ -166,6 +172,7 @@ export function SwitchTaskDialog({ open, onOpenChange }: SwitchTaskDialogProps) 
               placeholder="e.g., Team standup, Code review, Email, Deep work, Meeting..."
               value={newTaskTitle}
               onChange={(e) => setNewTaskTitle(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSwitchTask()}
               maxLength={100}
               className="text-base bg-input text-foreground"
             />
@@ -173,10 +180,15 @@ export function SwitchTaskDialog({ open, onOpenChange }: SwitchTaskDialogProps) 
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={handleSwitchTask} disabled={!newTaskTitle.trim()} className="flex-1">
-              Log & switch
+            <Button onClick={handleSwitchTask} disabled={!newTaskTitle.trim() || isSwitching} className="flex-1">
+              {isSwitching ? "Switching…" : "Log & switch"}
             </Button>
-            <Button onClick={() => onOpenChange(false)} variant="outline" className="flex-1">
+            <Button
+              onClick={() => onOpenChange(false)}
+              variant="outline"
+              className="flex-1"
+              disabled={isSwitching}
+            >
               Cancel
             </Button>
           </div>

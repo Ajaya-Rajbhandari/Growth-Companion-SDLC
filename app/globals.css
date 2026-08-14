@@ -10,7 +10,9 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.57 0.2 255);
+  /* L=0.52 keeps the brand hue while clearing WCAG AA for the button label
+     (white on primary = 5.38) and for text-primary on a card (5.55). */
+  --primary: oklch(0.52 0.2 255);
   --primary-foreground: oklch(0.99 0.01 255);
   --secondary: oklch(0.96 0.018 250);
   --secondary-foreground: oklch(0.22 0.04 260);
@@ -22,7 +24,9 @@
   --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.65 0 0);
+  /* Focus indicator must clear 3:1 against adjacent colors (WCAG 2.2 SC 1.4.11).
+     The old neutral gray measured 1.69:1 at the /50 alpha the primitives apply. */
+  --ring: oklch(0.52 0.18 255);
   --chart-1: oklch(0.58 0.2 41.116);
   --chart-2: oklch(0.52 0.12 184.704);
   --chart-3: oklch(0.35 0.07 227.392);
@@ -36,7 +40,7 @@
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.52 0.18 255);
 }
 
 .dark {
@@ -46,8 +50,11 @@
   --card-foreground: oklch(0.97 0.012 255);
   --popover: oklch(0.2 0.04 260);
   --popover-foreground: oklch(0.97 0.012 255);
+  /* Dark keeps the bright primary so `text-primary` stays legible on a dark card
+     (5.96), and pairs it with a dark label instead of white — near-white on this
+     blue measured 2.84:1, the worst failure on the default theme. Now 6.53. */
   --primary: oklch(0.68 0.18 255);
-  --primary-foreground: oklch(0.99 0.01 255);
+  --primary-foreground: oklch(0.17 0.035 260);
   --secondary: oklch(0.27 0.04 260);
   --secondary-foreground: oklch(0.94 0.015 255);
   --muted: oklch(0.27 0.035 260);
@@ -67,7 +74,7 @@
   --sidebar: oklch(0.19 0.04 260 / 0.96);
   --sidebar-foreground: oklch(0.96 0.012 255);
   --sidebar-primary: oklch(0.68 0.18 255);
-  --sidebar-primary-foreground: oklch(0.99 0.01 255);
+  --sidebar-primary-foreground: oklch(0.17 0.035 260);
   --sidebar-accent: oklch(0.28 0.055 260);
   --sidebar-accent-foreground: oklch(0.98 0.01 255);
   --sidebar-border: oklch(0.35 0.04 260 / 0.65);
@@ -75,7 +82,11 @@
 }
 
 @theme inline {
-  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
+  /* Supplied by next/font in app/layout.tsx, which sets --font-geist-* on <html>.
+     Without these two lines `font-sans` and `font-mono` resolve to the system
+     stacks and the downloaded webfonts go unused. */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -116,7 +127,7 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
   }
   html, body {
     @apply bg-background text-foreground;
@@ -139,6 +150,27 @@
   button, a, [role="button"] {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* The timesheet renders an independent pulsing dot per open session, so a busy
+     history view can have several running at once. Honour the OS setting.
+     Animations are reduced to a single near-instant pass rather than removed, so
+     anything relying on an animation/transition end event still fires. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+
+    /* Without the pulse, "live" needs to survive as something static. */
+    .animate-pulse {
+      outline: 2px solid currentColor;
+      outline-offset: 2px;
+    }
   }
   
   /* Safe area insets for notched devices */

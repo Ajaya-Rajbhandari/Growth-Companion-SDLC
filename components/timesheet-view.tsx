@@ -15,6 +15,7 @@ import {
   type NotificationSoundId,
 } from "@/lib/notification-sound"
 import { cn, getLocalDateKey, parseLocalDateKey } from "@/lib/utils"
+import { getBreakCountdown, getBreakElapsed, type BreakCountdown } from "@/lib/break-timer"
 
 import {
   type ViewPeriod,
@@ -35,6 +36,7 @@ import { TodayTimeline } from "./timesheet/today-timeline"
 import { StatsCards } from "./timesheet/stats-cards"
 import { TemplatesCard } from "./timesheet/templates-card"
 import { HistoryCard } from "./timesheet/history-card"
+import { TimesheetSkeleton } from "./timesheet/timesheet-skeleton"
 import {
   NotesDialog,
   BreakDialog,
@@ -62,6 +64,7 @@ export function TimesheetView() {
     graceMinutes,
     allowOverworkMinutes,
     resetOverworkForToday,
+    initialDataStatus,
   } = useAppStore(
     useShallow((state) => ({
       timeEntries: state.timeEntries,
@@ -73,12 +76,14 @@ export function TimesheetView() {
       graceMinutes: state.graceMinutes,
       allowOverworkMinutes: state.allowOverworkMinutes,
       resetOverworkForToday: state.resetOverworkForToday,
+      initialDataStatus: state.initialDataStatus,
     })),
   )
 
-  // Time tracking
-  const [elapsedTime, setElapsedTime] = useState({ hours: 0, minutes: 0, seconds: 0 })
-  const [breakTimeRemaining, setBreakTimeRemaining] = useState<{ minutes: number; seconds: number } | null>(null)
+  // Time tracking. Minute resolution only — the hero clock is a self-contained
+  // <LiveTimer>, and everything reading this value renders "{hours}h {minutes}m".
+  const [elapsedTime, setElapsedTime] = useState({ hours: 0, minutes: 0 })
+  const [breakTimeRemaining, setBreakTimeRemaining] = useState<BreakCountdown | null>(null)
   const [breakElapsed, setBreakElapsed] = useState({ minutes: 0, seconds: 0 })
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [notificationSoundId, setNotificationSoundId] = useState<NotificationSoundId>("default")
@@ -157,9 +162,16 @@ export function TimesheetView() {
   // the session clock is frozen at the break's start time instead of ticking on.
   // This still runs during a break so a fresh mount (e.g. a refresh that restored
   // an unfinished break) shows the frozen value rather than 00:00:00.
+  //
+  // This used to tick every second, and the value is passed down to HistoryCard —
+  // an 856-line component that maps every entry in the selected period into table
+  // rows. That re-rendered the whole history 60 times a minute for a number that
+  // only changes once. It now polls on a coarse interval and returns the previous
+  // object unless the minute actually rolled over, so React bails out of the
+  // re-render entirely in between.
   useEffect(() => {
     if (!currentEntry) {
-      setElapsedTime({ hours: 0, minutes: 0, seconds: 0 })
+      setElapsedTime((prev) => (prev.hours === 0 && prev.minutes === 0 ? prev : { hours: 0, minutes: 0 }))
       return
     }
 
@@ -171,15 +183,15 @@ export function TimesheetView() {
 
       const hours = Math.floor(diffMs / (1000 * 60 * 60))
       const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-      const seconds = Math.floor((diffMs % (1000 * 60)) / 1000)
 
-      setElapsedTime({ hours, minutes, seconds })
+      setElapsedTime((prev) => (prev.hours === hours && prev.minutes === minutes ? prev : { hours, minutes }))
     }
 
     updateElapsedTime()
     if (activeBreak) return
 
-    const interval = setInterval(updateElapsedTime, 1000)
+    // 15s keeps a minute rollover visible promptly without paying for 60 wake-ups.
+    const interval = setInterval(updateElapsedTime, 15000)
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -199,27 +211,15 @@ export function TimesheetView() {
   useEffect(() => {
     if (activeBreak) {
       const updateBreakTime = () => {
-        const startTime = new Date(activeBreak.startTime).getTime()
         const now = Date.now()
-        const elapsedMs = now - startTime
+        setBreakElapsed(getBreakElapsed(activeBreak.startTime, now))
 
-        const elapsedMins = Math.floor(elapsedMs / (1000 * 60))
-        const elapsedSecs = Math.floor((elapsedMs % (1000 * 60)) / 1000)
-        setBreakElapsed({ minutes: elapsedMins, seconds: elapsedSecs })
+        // Null means an open-ended break — nothing to count down to, and no alarm.
+        const countdown = getBreakCountdown(activeBreak.startTime, activeBreak.durationMinutes, now)
+        setBreakTimeRemaining(countdown)
 
-        if (activeBreak.durationMinutes) {
-          const totalBreakMs = activeBreak.durationMinutes * 60 * 1000
-          const remainingMs = Math.max(0, totalBreakMs - elapsedMs)
-
-          if (remainingMs <= 0 && !breakEndedAlert) {
-            playAlarm()
-          }
-
-          const remainingMins = Math.floor(remainingMs / (1000 * 60))
-          const remainingSecs = Math.floor((remainingMs % (1000 * 60)) / 1000)
-          setBreakTimeRemaining({ minutes: remainingMins, seconds: remainingSecs })
-        } else {
-          setBreakTimeRemaining(null)
+        if (countdown?.isOverrun && !breakEndedAlert) {
+          playAlarm()
         }
       }
 
@@ -371,6 +371,13 @@ export function TimesheetView() {
     }
   }
 
+  // "loading" is the initial fetch. Only show the placeholder when there is
+  // nothing to show yet — a background refetch of an already-populated screen
+  // should not blank out the data the user is reading.
+  if (initialDataStatus === "loading" && timeEntries.length === 0 && !currentEntry) {
+    return <TimesheetSkeleton />
+  }
+
   return (
     <div className="space-y-2 sm:space-y-3 w-full max-w-full overflow-x-hidden [&>*]:max-w-full [&>*]:overflow-x-hidden">
       {activeBreak && (
@@ -457,7 +464,7 @@ export function TimesheetView() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">Plays when your break ends.</p>
+                  <p className="text-xs text-muted-foreground">Plays when your break ends.</p>
                 </div>
               </PopoverContent>
             </Popover>
@@ -468,7 +475,6 @@ export function TimesheetView() {
           <ClockInCard isAtHardCap={workStats.status === "hardCap"} onManageCategories={() => setShowCategoryManagement(true)} />
         ) : (
           <ActiveSessionCard
-            elapsedTime={elapsedTime}
             remainingMinutes={workStats.remainingMinutes}
             overtimeBadge={workStats.overtimeBadge}
             onEditTask={() => setEditTaskDialogOpen(true)}

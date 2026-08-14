@@ -1,5 +1,15 @@
 # Production Monitoring Guide
 
+> ⚠️ **This document is largely aspirational. Read it as a wish list, not a
+> description of production.** Sentry is genuinely wired and receiving events
+> (verified 2026-08-13). Most of the rest — the alert rules, the uptime monitor,
+> the Datadog dashboard, Google Analytics, the SLO targets — describes systems
+> that have not been set up. Do not cite anything here as an SLO or assume an
+> alert exists because this file mentions it.
+>
+> For what actually exists and what is genuinely blind, see
+> [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md).
+
 This guide covers setting up comprehensive monitoring for Growth Companion in production.
 
 ## 1. Error Tracking (Sentry)
@@ -38,9 +48,13 @@ Create `sentry.server.config.ts`:
 import * as Sentry from "@sentry/nextjs"
 
 Sentry.init({
-  dsn: process.env.SENTRY_DSN,
+  // NEXT_PUBLIC_SENTRY_DSN, not SENTRY_DSN. Every config in this repo reads the
+  // NEXT_PUBLIC_ name and self-disables via `enabled: !!process.env.NEXT_PUBLIC_SENTRY_DSN`,
+  // so setting only SENTRY_DSN leaves Sentry silently off with no warning.
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   environment: process.env.NODE_ENV,
-  tracesSampleRate: 1.0,
+  // Production actually runs at 0.1 — see sentry.server.config.ts.
+  tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
   serverName: process.env.VERCEL_URL || "localhost",
 })
 ```
@@ -65,8 +79,11 @@ export default withSentryConfig(config, {
 
 Add to Vercel:
 ```
+# The only DSN variable this codebase reads. Do not set SENTRY_DSN — nothing
+# reads it, and setting it instead leaves Sentry disabled with no warning.
 NEXT_PUBLIC_SENTRY_DSN=https://xxx@xxx.ingest.sentry.io/xxx
-SENTRY_DSN=https://xxx@xxx.ingest.sentry.io/xxx
+# Optional, but without it no release is created and source maps are never
+# uploaded — stack traces arrive minified.
 SENTRY_AUTH_TOKEN=xxx
 ```
 

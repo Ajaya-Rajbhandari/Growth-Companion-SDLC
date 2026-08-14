@@ -70,8 +70,8 @@ export function TodayTimeline() {
   if (todayTimelineItems.length === 0) return null
 
   return (
-    <Card className="border-border bg-card w-full max-w-full overflow-hidden !px-0">
-      <CardHeader className="p-2 sm:p-3 md:p-4 !px-2 sm:!px-3 md:!px-4">
+    <Card density="compact" className="border-border bg-card w-full max-w-full overflow-hidden">
+      <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
           <ListTodo className="size-4 sm:size-5 text-primary" />
           What I did today
@@ -80,7 +80,7 @@ export function TodayTimeline() {
           Time-to-time log for the day. Switch task when you change activity to keep this accurate.
         </p>
       </CardHeader>
-      <CardContent className="p-2 sm:p-3 md:p-4 pt-0 !px-2 sm:!px-3 md:!px-4">
+      <CardContent>
         <ul className="space-y-2">
           {todayTimelineItems.map((item, idx) => {
             const duration = item.end
@@ -110,14 +110,14 @@ export function TodayTimeline() {
                     : "bg-muted/40 border border-border",
                 )}
               >
-                <span className="font-mono text-[11px] sm:text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                <span className="font-mono text-xs sm:text-sm text-muted-foreground whitespace-nowrap shrink-0">
                   {formatTime(item.start)}
                   <span className="mx-1 opacity-60">→</span>
                   {item.end ? formatTime(item.end) : <span className="text-primary">now</span>}
                 </span>
                 <span className="flex-1 min-w-0 font-medium truncate">{item.label}</span>
                 {item.type === "break" && (
-                  <Coffee className="size-4 text-amber-500 flex-shrink-0" />
+                  <Coffee className="size-4 text-amber-700 dark:text-amber-500 flex-shrink-0" />
                 )}
                 {durationStr && (
                   <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">

@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Play } from "lucide-react"
 import type { BreakPeriod } from "@/lib/store"
+import { formatBreakClock, type BreakCountdown } from "@/lib/break-timer"
+import { cn } from "@/lib/utils"
 
 interface BreakModePanelProps {
   activeBreak: BreakPeriod | null
-  breakTimeRemaining: { minutes: number; seconds: number } | null
+  /** Null for an open-ended break, where elapsed time is shown instead. */
+  breakTimeRemaining: BreakCountdown | null
   breakElapsed: { minutes: number; seconds: number }
   onResume: () => void | Promise<void>
   isBreakEndedAlert: boolean
@@ -68,36 +71,60 @@ export function BreakModePanel({
 
       <CardContent className="space-y-4">
         <div className="text-center space-y-2">
-          {breakTimeRemaining && breakTimeRemaining.minutes >= 0 ? (
+          {breakTimeRemaining ? (
             <div>
-              <p className="text-xs text-foreground/70 mb-2">Time Remaining</p>
-              <div className="text-6xl font-bold text-amber-700 dark:text-amber-400 font-mono tracking-wider">
-                {formatBreakTime(breakTimeRemaining.minutes, breakTimeRemaining.seconds)}
+              <p className="text-xs text-foreground/70 mb-2">
+                {breakTimeRemaining.isOverrun ? "Over by" : "Time Remaining"}
+              </p>
+              <div
+                aria-hidden="true"
+                className={cn(
+                  "text-6xl font-bold font-mono tabular-nums tracking-wider",
+                  breakTimeRemaining.isOverrun
+                    ? "text-red-700 dark:text-red-300"
+                    : "text-amber-700 dark:text-amber-400",
+                )}
+              >
+                {formatBreakClock(breakTimeRemaining)}
               </div>
+              {/* Minute granularity, so this speaks once a minute rather than once a
+                  second. The seconds are in the visible clock above. */}
+              <span role="status" aria-live="polite" className="sr-only">
+                {breakTimeRemaining.isOverrun
+                  ? `Break is ${breakTimeRemaining.minutes} minutes over.`
+                  : `${breakTimeRemaining.minutes} minutes of break remaining.`}
+              </span>
             </div>
           ) : (
             <div>
               <p className="text-xs text-foreground/70 mb-2">Break Elapsed</p>
-              <div className="text-6xl font-bold text-amber-700 dark:text-amber-300 font-mono tracking-wider">
+              <div
+                aria-hidden="true"
+                className="text-6xl font-bold text-amber-700 dark:text-amber-300 font-mono tabular-nums tracking-wider"
+              >
                 {formatBreakTime(breakElapsed.minutes, breakElapsed.seconds)}
               </div>
+              <span role="status" aria-live="polite" className="sr-only">
+                {`On break for ${breakElapsed.minutes} minutes.`}
+              </span>
             </div>
           )}
 
-          {breakTimeRemaining && breakTimeRemaining.minutes >= 0 && (
-            <div className="mt-4 w-full bg-muted rounded-full h-2 overflow-hidden">
+          {breakTimeRemaining && (
+            <div
+              className="mt-4 w-full bg-muted rounded-full h-2 overflow-hidden"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(breakTimeRemaining.percentUsed)}
+              aria-label="Break progress"
+            >
               <div
-                className="h-full bg-amber-500 rounded-full transition-all duration-300"
-                style={{
-                  width: `${
-                    Math.max(
-                      0,
-                      100 -
-                        (breakTimeRemaining.minutes * 60 + breakTimeRemaining.seconds) /
-                          ((activeBreak.durationMinutes || 1) * 60),
-                    ) * 100
-                  }%`,
-                }}
+                className={cn(
+                  "h-full rounded-full transition-all duration-300",
+                  breakTimeRemaining.isOverrun ? "bg-red-600 dark:bg-red-500" : "bg-amber-500",
+                )}
+                style={{ width: `${breakTimeRemaining.percentUsed}%` }}
               />
             </div>
           )}

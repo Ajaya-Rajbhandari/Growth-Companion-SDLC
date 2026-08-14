@@ -138,7 +138,15 @@ test("core app smoke: login, dashboard, notes, and timesheet task switch", async
   await page.getByRole("button", { name: "Sign In" }).click()
 
   await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), E2E!/ })).toBeVisible()
-  await expect(page.getByText("Currently Working")).toBeVisible()
+  // dashboard-view renders `currentEntry.title?.trim() || "Currently Working"`,
+  // so the literal string is the *empty-title fallback*. This fixture supplies a
+  // title, meaning the fallback can never render and asserting on it fails —
+  // which is why the release gate had been red since 2026-07-29. Assert the
+  // title instead: it proves the active session rendered, which is what this
+  // smoke test is actually for.
+  // exact: true — the title also appears in a "· <title>" summary line, and a
+  // substring match resolves to both, tripping strict mode.
+  await expect(page.getByText(activeEntry.title, { exact: true })).toBeVisible()
 
   await page.getByRole("button", { name: "Notes" }).click()
   await expect(page.getByRole("heading", { name: "Notes" })).toBeVisible()
