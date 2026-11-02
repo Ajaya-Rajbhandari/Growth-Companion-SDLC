@@ -14,6 +14,9 @@ import { cn } from "@/lib/utils"
 import { useTaskTitleSuggestions } from "./use-task-title-suggestions"
 import { useScreenshotTitle } from "./use-screenshot-title"
 import { ScreenshotTitleField } from "./screenshot-title-field"
+import { HistoryTitleChips } from "./history-title-chips"
+import { useTitleHistory } from "./use-title-history"
+import type { TitleSuggestion } from "@/lib/title-history"
 
 interface ClockInDialogProps {
   open: boolean
@@ -38,6 +41,20 @@ export function ClockInDialog({ open, onOpenChange, isAtHardCap = false }: Clock
   const screenshot = useScreenshotTitle(open)
   const recentTemplates = getTopTemplates().slice(0, 5)
   const hasClockedInToday = getTodayTimeEntries().length > 0
+  const titleHistory = useTitleHistory()
+
+  // Same rule as the clock-in card: bring the past session's category along
+  // only when none is chosen and that category still exists.
+  const pickHistory = (suggestion: TitleSuggestion) => {
+    setTitle(suggestion.title)
+    if (
+      category === "none" &&
+      suggestion.category &&
+      timeCategories.some((item) => item.id === suggestion.category)
+    ) {
+      setCategory(suggestion.category)
+    }
+  }
 
   useEffect(() => {
     if (!open) {
@@ -128,7 +145,7 @@ export function ClockInDialog({ open, onOpenChange, isAtHardCap = false }: Clock
 
           {recentTemplates.length > 0 && (
             <div className="space-y-2">
-              <Label>Recent work</Label>
+              <Label>Saved templates</Label>
               <div className="flex flex-wrap gap-2">
                 {recentTemplates.map((template) => (
                   <button
@@ -164,6 +181,12 @@ export function ClockInDialog({ open, onOpenChange, isAtHardCap = false }: Clock
             <p className="text-xs text-muted-foreground">
               Be specific enough that the activity makes sense in your daily log.
             </p>
+            <HistoryTitleChips
+              history={titleHistory}
+              query={title}
+              onPick={pickHistory}
+              disabled={submitting || !!unavailableReason}
+            />
           </div>
 
           <div className="space-y-2">

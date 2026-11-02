@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
+import { buildTitleHistory } from "@/lib/title-history"
 
 // Fetches AI task-title suggestions for the switch-task dialog: an initial
 // fetch when the dialog opens, then debounced re-fetches as the user types.
@@ -25,11 +26,9 @@ export function useTaskTitleSuggestions(open: boolean, draft: string) {
       abortRef.current = new AbortController()
       setSuggestionsLoading(true)
       const recentFromTemplates = getTopTemplates().slice(0, 8).map((t) => t.title)
-      const recentFromEntries = [...timeEntries]
-        .filter((e) => e.title && e.clockOut)
-        .reverse()
-        .slice(0, 12)
-        .map((e) => e.title as string)
+      // Newest-ranked, subtasks included; `timeEntries` is stored newest-first,
+      // so the old `.reverse().slice()` here sent the AI the oldest titles.
+      const recentFromEntries = buildTitleHistory(timeEntries).slice(0, 12).map((s) => s.title)
       const recentTitles = Array.from(new Set([...recentFromTemplates, ...recentFromEntries]))
       try {
         const res = await fetch("/api/suggest-task-titles", {

@@ -11,6 +11,8 @@ import { toast } from "@/components/ui/use-toast"
 import { useTaskTitleSuggestions } from "./use-task-title-suggestions"
 import { useScreenshotTitle } from "./use-screenshot-title"
 import { ScreenshotTitleField } from "./screenshot-title-field"
+import { HistoryTitleChips } from "./history-title-chips"
+import { useTitleHistory } from "./use-title-history"
 
 interface SwitchTaskDialogProps {
   open: boolean
@@ -18,9 +20,8 @@ interface SwitchTaskDialogProps {
 }
 
 export function SwitchTaskDialog({ open, onOpenChange }: SwitchTaskDialogProps) {
-  const { timeEntries, currentEntry, switchTask, getTopTemplates } = useAppStore(
+  const { currentEntry, switchTask, getTopTemplates } = useAppStore(
     useShallow((state) => ({
-      timeEntries: state.timeEntries,
       currentEntry: state.currentEntry,
       switchTask: state.switchTask,
       getTopTemplates: state.getTopTemplates,
@@ -32,6 +33,7 @@ export function SwitchTaskDialog({ open, onOpenChange }: SwitchTaskDialogProps) 
   const { aiSuggestions, suggestionsLoading } = useTaskTitleSuggestions(open, newTaskTitle)
   const screenshot = useScreenshotTitle(open)
   const topTemplates = getTopTemplates()
+  const titleHistory = useTitleHistory()
 
   useEffect(() => {
     if (open) setNewTaskTitle("")
@@ -115,7 +117,7 @@ export function SwitchTaskDialog({ open, onOpenChange }: SwitchTaskDialogProps) 
           {/* Recently used tasks */}
           {topTemplates.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-foreground">Recently Used Tasks</h3>
+              <h3 className="text-sm font-semibold text-foreground">Saved templates</h3>
               <div className="grid gap-2 sm:grid-cols-2">
                 {topTemplates.slice(0, 4).map((template) => (
                   <button
@@ -126,45 +128,28 @@ export function SwitchTaskDialog({ open, onOpenChange }: SwitchTaskDialogProps) 
                     className="p-3 rounded-lg border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-left transition-colors text-foreground"
                   >
                     <p className="font-medium text-sm truncate">{template.title}</p>
-                    <p className="text-xs text-foreground/70">Used {template.usageCount} times</p>
+                    {template.usageCount > 0 && (
+                      <p className="text-xs text-foreground/70">Used {template.usageCount} times</p>
+                    )}
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Recent completed tasks from history */}
-          {timeEntries.length > 0 && (
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-foreground">Recent Tasks from History</h3>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {Array.from(
-                  new Map(
-                    timeEntries
-                      .filter((e) => e.title && e.clockOut)
-                      .reverse()
-                      .map((e) => [e.title, e]),
-                  ).values(),
-                )
-                  .slice(0, 4)
-                  .map((entry) => (
-                    <button
-                      key={entry.id}
-                      onClick={() => {
-                        setNewTaskTitle(entry.title || "")
-                      }}
-                      className="p-3 rounded-lg border border-green-500/30 bg-green-500/10 hover:bg-green-500/20 text-left transition-colors text-foreground"
-                    >
-                      <p className="font-medium text-sm truncate">{entry.title}</p>
-                      <p className="text-xs text-foreground/70">{new Date(entry.clockIn).toLocaleDateString()}</p>
-                    </button>
-                  ))}
-              </div>
-            </div>
-          )}
+          {/* Every past title, switched-away-from tasks included — not just each
+              day's final task. The task being switched away from is left out. */}
+          <HistoryTitleChips
+            history={titleHistory}
+            query={newTaskTitle}
+            onPick={(suggestion) => setNewTaskTitle(suggestion.title)}
+            exclude={[currentEntry?.title]}
+            limit={8}
+            disabled={isSwitching}
+          />
 
           {/* Divider */}
-          {(topTemplates.length > 0 || timeEntries.length > 0) && (
+          {(topTemplates.length > 0 || titleHistory.length > 0) && (
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-border" />

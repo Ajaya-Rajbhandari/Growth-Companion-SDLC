@@ -23,6 +23,9 @@ import {
   type NotificationSoundId,
 } from "@/lib/notification-sound"
 import { Play, Square, ClipboardList, ExternalLink, Clock, Coffee } from "lucide-react"
+import { buildTitleHistory } from "@/lib/title-history"
+import { HistoryTitleChips } from "@/components/timesheet/history-title-chips"
+import { useTitleHistory } from "@/components/timesheet/use-title-history"
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
@@ -90,6 +93,7 @@ export default function WidgetPage() {
     })),
   )
 
+  const titleHistory = useTitleHistory()
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -112,11 +116,9 @@ export default function WidgetPage() {
       suggestAbortRef.current = new AbortController()
       setSuggestionsLoading(true)
       const recentFromTemplates = getTopTemplates().slice(0, 8).map((t) => t.title)
-      const recentFromEntries = [...timeEntries]
-        .filter((e) => e.title && e.clockOut)
-        .reverse()
-        .slice(0, 12)
-        .map((e) => e.title as string)
+      // Newest-ranked, subtasks included; `timeEntries` is stored newest-first,
+      // so the old `.reverse().slice()` here sent the AI the oldest titles.
+      const recentFromEntries = buildTitleHistory(timeEntries).slice(0, 12).map((s) => s.title)
       const recentTitles = Array.from(new Set([...recentFromTemplates, ...recentFromEntries]))
       fetch("/api/suggest-task-titles", {
         method: "POST",
@@ -508,6 +510,16 @@ export default function WidgetPage() {
             onKeyDown={(e) => e.key === "Enter" && handleClockIn()}
             className="mb-2"
           />
+          <div className="mb-3">
+            <HistoryTitleChips
+              history={titleHistory}
+              query={workTitle}
+              onPick={(suggestion) => setWorkTitle(suggestion.title)}
+              limit={4}
+              compact
+              disabled={isLoading}
+            />
+          </div>
           <Button onClick={handleClockIn} className="w-full gap-2" size="lg" disabled={isLoading}>
             <Play className="size-4" />
             {isLoading ? "Clocking in…" : "Clock In"}
@@ -554,6 +566,17 @@ export default function WidgetPage() {
               onKeyDown={(e) => e.key === "Enter" && handleSwitchTask()}
               className="mb-2"
             />
+            <div className="mb-3">
+              <HistoryTitleChips
+                history={titleHistory}
+                query={newTaskTitle}
+                onPick={(suggestion) => setNewTaskTitle(suggestion.title)}
+                exclude={[currentEntry.title]}
+                limit={4}
+                compact
+                disabled={isLoading}
+              />
+            </div>
             <Button
               onClick={handleSwitchTask}
               variant="secondary"
