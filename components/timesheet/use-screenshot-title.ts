@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useAppStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
 import { imageFromClipboard, isAcceptedImageType, prepareScreenshot } from "@/lib/screenshot"
+import { buildTitleHistory } from "@/lib/title-history"
 
 export type ScreenshotStatus = "idle" | "reading" | "ready" | "error"
 
@@ -129,11 +130,9 @@ export function useScreenshotTitle(active: boolean): ScreenshotTitleState {
       setSuggestions([])
 
       const recentFromTemplates = getTopTemplates().slice(0, 8).map((template) => template.title)
-      const recentFromEntries = [...timeEntries]
-        .filter((entry) => entry.title && entry.clockOut)
-        .reverse()
-        .slice(0, 12)
-        .map((entry) => entry.title as string)
+      // Newest-ranked, subtasks included; `timeEntries` is stored newest-first,
+      // so the old `.reverse().slice()` here sent the AI the oldest titles.
+      const recentFromEntries = buildTitleHistory(timeEntries).slice(0, 12).map((s) => s.title)
       const recentTitles = Array.from(new Set([...recentFromTemplates, ...recentFromEntries]))
 
       void (async () => {

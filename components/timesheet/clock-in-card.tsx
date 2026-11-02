@@ -13,6 +13,9 @@ import { toast } from "@/components/ui/use-toast"
 import { Play } from "lucide-react"
 import { useScreenshotTitle } from "./use-screenshot-title"
 import { ScreenshotTitleField } from "./screenshot-title-field"
+import { HistoryTitleChips } from "./history-title-chips"
+import { useTitleHistory } from "./use-title-history"
+import type { TitleSuggestion } from "@/lib/title-history"
 
 interface ClockInCardProps {
   isAtHardCap: boolean
@@ -49,6 +52,20 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
   const screenshot = useScreenshotTitle(true)
 
   const topTemplates = getTopTemplates()
+  const titleHistory = useTitleHistory()
+
+  // A past title brings its session's category along, but never overrides a
+  // category the user already picked, nor one that has since been deleted.
+  const handlePickHistory = (suggestion: TitleSuggestion) => {
+    setWorkTitle(suggestion.title)
+    if (
+      selectedCategory === "none" &&
+      suggestion.category &&
+      timeCategories.some((cat) => cat.id === suggestion.category)
+    ) {
+      setSelectedCategory(suggestion.category)
+    }
+  }
 
   // Handle clockIn with workTitle and save template
   const handleClockIn = () => {
@@ -185,6 +202,12 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
             onKeyDown={(e) => e.key === "Enter" && handleClockIn()}
             className="text-base h-12 sm:h-10 w-full max-w-full"
           />
+          <HistoryTitleChips
+            history={titleHistory}
+            query={workTitle}
+            onPick={handlePickHistory}
+            disabled={isClockingIn}
+          />
         </div>
 
         <ScreenshotTitleField
@@ -231,7 +254,9 @@ export function ClockInCard({ isAtHardCap, onManageCategories }: ClockInCardProp
 
         {topTemplates.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-medium text-foreground/70">Recently used:</p>
+            {/* `usageCount` is never incremented, so these are saved templates,
+                not a usage ranking — the history chips above are the recent work. */}
+            <p className="text-xs font-medium text-foreground/70">Saved templates:</p>
             <div className="flex flex-wrap gap-2">
               {topTemplates.map((template) => (
                 <Button
